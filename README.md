@@ -1,4 +1,4 @@
-# RxGuard — Antibiotic Stewardship AI
+HI # RxGuard — Antibiotic Stewardship AI
 
 RxGuard is a clinical decision-support tool that helps physicians make safer, evidence-based antibiotic prescribing decisions. It combines rule-based clinical scoring, a local antibiogram, and AI-generated reasoning to reduce inappropriate antibiotic use and prevent medication harm at the point of care and at discharge.
 
