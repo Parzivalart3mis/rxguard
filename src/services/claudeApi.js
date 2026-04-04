@@ -1,13 +1,33 @@
 // AI API service for clinical reasoning (Groq + Llama)
+//
+// Calls are proxied through our own backend (/api/ai/groq) so that
+// the Groq API key is never exposed in the browser bundle.
+// The backend must be running (npm run server) for AI features to work.
+// All functions fall back to rule-based generators on any network/API error.
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_URL = '/api/ai/groq';
 
-export const generateClinicalExplanation = async (patient, scoreResult) => {
-  if (!GROQ_API_KEY) {
-    return generateFallbackExplanation(patient, scoreResult);
+const callGroq = async (payload) => {
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend returned ${response.status}`);
   }
 
+  const data = await response.json();
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  return data.choices[0].message.content;
+};
+
+export const generateClinicalExplanation = async (patient, scoreResult) => {
   try {
     const prompt = `You are a clinical decision support system for antibiotic stewardship.
 
@@ -24,37 +44,19 @@ Provide a 2-3 sentence clinical explanation for why this score was assigned, cit
 
 Always end with: "Clinical judgment should guide all prescribing decisions."`;
 
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 200,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 200,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('AI explanation error:', error);
     return generateFallbackExplanation(patient, scoreResult);
   }
 };
 
 export const generateRecommendationRationale = async (patient, recommendation, originalChoice) => {
-  if (!GROQ_API_KEY) {
-    return generateFallbackRationale(patient, recommendation);
-  }
-
   try {
     const prompt = `You are an antibiotic stewardship advisor.
 
@@ -69,48 +71,23 @@ Explain in 2-3 sentences why ${recommendation.name} is preferred, citing:
 - Local resistance data: ${recommendation.resistanceData ? `${recommendation.resistanceData.susceptibility}% susceptibility` : 'No specific data'}
 - Patient-specific factors: ${patient.allergies.length > 0 ? 'allergies considered' : 'no allergy concerns'}
 
-Be respectful of physician autonomy. Use phrases like "Consider..." not "You must..." 
+Be respectful of physician autonomy. Use phrases like "Consider..." not "You must..."
 
 End with: "Clinical judgment should guide all prescribing decisions."`;
 
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 200,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 200,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('AI rationale error:', error);
     return generateFallbackRationale(patient, recommendation);
   }
 };
 
-const generateFallbackExplanation = (patient, scoreResult) => {
-  const indicators = scoreResult.details?.indicators || [];
-  const indicatorText = indicators.slice(0, 2).join('; ');
-  
-  return `The clinical data suggests a bacterial probability of ${scoreResult.score}% based on the ${scoreResult.method}. Key findings include: ${indicatorText || 'available clinical indicators'}. ${scoreResult.explanation} Clinical judgment should guide all prescribing decisions.`;
-};
-
 export const generateSuboptimalReasoning = async (patient, selectedAntibiotic, selectedAssessment, recommendedAntibiotic) => {
-  if (!GROQ_API_KEY) {
-    return generateFallbackSuboptimal(selectedAntibiotic, selectedAssessment, recommendedAntibiotic);
-  }
-
   try {
     const prompt = `You are an antibiotic stewardship advisor reviewing a prescribing decision.
 
@@ -129,30 +106,22 @@ In 2-3 sentences, explain specifically why ${selectedAntibiotic.name} is not the
 
 End with: "Clinical judgment should guide all prescribing decisions."`;
 
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 200,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 200,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('AI suboptimal reasoning error:', error);
     return generateFallbackSuboptimal(selectedAntibiotic, selectedAssessment, recommendedAntibiotic);
   }
+};
+
+const generateFallbackExplanation = (patient, scoreResult) => {
+  const indicators = scoreResult.details?.indicators || [];
+  const indicatorText = indicators.slice(0, 2).join('; ');
+  return `The clinical data suggests a bacterial probability of ${scoreResult.score}% based on the ${scoreResult.method}. Key findings include: ${indicatorText || 'available clinical indicators'}. ${scoreResult.explanation} Clinical judgment should guide all prescribing decisions.`;
 };
 
 const generateFallbackSuboptimal = (selectedAntibiotic, selectedAssessment, recommendedAntibiotic) => {
@@ -173,12 +142,12 @@ const generateFallbackSuboptimal = (selectedAntibiotic, selectedAssessment, reco
   return `${reason} ${recommendedAntibiotic.name} may be a more targeted choice. Clinical judgment should guide all prescribing decisions.`;
 };
 
-const generateFallbackRationale = (patient, recommendation) => {
-  return `Consider ${recommendation.name} as the preferred option. It offers ${recommendation.spectrum}-spectrum coverage targeted to typical pathogens for this condition, with ${recommendation.resistanceData?.susceptibility || 'good'}% local susceptibility. ${patient.allergies.length > 0 ? 'This selection avoids documented allergy concerns.' : 'No allergy contraindications identified.'} Clinical judgment should guide all prescribing decisions.`;
+const generateFallbackRationale = (_patient, recommendation) => {
+  return `Consider ${recommendation.name} as the preferred option. It offers ${recommendation.spectrum}-spectrum coverage targeted to typical pathogens for this condition, with ${recommendation.resistanceData?.susceptibility || 'good'}% local susceptibility. Clinical judgment should guide all prescribing decisions.`;
 };
 
 export default {
   generateClinicalExplanation,
   generateRecommendationRationale,
-  generateSuboptimalReasoning
+  generateSuboptimalReasoning,
 };

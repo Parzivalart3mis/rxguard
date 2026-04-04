@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, AlertTriangle, CheckCircle, Loader2, ClipboardList, Zap, FileText, Users } from 'lucide-react';
 
 import StepIndicator from './StepIndicator.jsx';
@@ -10,8 +10,32 @@ import CascadeFlowDiagram from './CascadeFlowDiagram.jsx';
 import WatchOutSymptomCard from './WatchOutSymptomCard.jsx';
 
 import dischargePatients from '../data/dischargePatients.js';
-import { runSafetyChecks, canDischargeProceed } from '../services/safetyEngine.js';
 import { generateMedicationInstructions, generateFollowUpActions } from '../services/dischargeGenerator.js';
+
+// Pure discharge-gate logic — no data imports needed
+const canDischargeProceed = (safetyResult, resolvedAlertIds = []) => {
+  const unresolvedCritical = safetyResult.alerts.critical.filter(
+    (a) => !resolvedAlertIds.includes(a.title)
+  );
+  if (unresolvedCritical.length > 0) {
+    return {
+      canProceed: false,
+      reason: `${unresolvedCritical.length} critical alert(s) must be resolved`,
+      blockingAlerts: unresolvedCritical,
+    };
+  }
+  const unresolvedMajor = safetyResult.alerts.major.filter(
+    (a) => !resolvedAlertIds.includes(a.title)
+  );
+  if (unresolvedMajor.length > 0) {
+    return {
+      canProceed: true,
+      warning: `${unresolvedMajor.length} major alert(s) should be reviewed`,
+      pendingAlerts: unresolvedMajor,
+    };
+  }
+  return { canProceed: true, warning: null };
+};
 
 // Extract drug names involved in any alert
 const getFlaggedMeds = (safetyResult) => {
@@ -50,10 +74,51 @@ const DischargeWorkflow = () => {
     [selectedPatientId]
   );
 
-  const safetyResult = useMemo(
-    () => (patient ? runSafetyChecks(patient) : null),
-    [patient]
-  );
+  const [safetyResult, setSafetyResult] = useState(null);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [safetyError, setSafetyError] = useState(null);
+  const [sideEffectsMap, setSideEffectsMap] = useState({});
+
+  useEffect(() => {
+    if (!patient) {
+      setSafetyResult(null);
+      setSafetyError(null);
+      setSideEffectsMap({});
+      return;
+    }
+
+    setSafetyLoading(true);
+    setSafetyError(null);
+
+    const allMedKeys = [
+      ...patient.continuingMeds.map((m) => m.drug),
+      ...patient.newMeds.map((m) => m.drug),
+    ].join(',');
+
+    Promise.all([
+      fetch('/api/safety/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patient),
+      }).then((r) => {
+        if (!r.ok) throw new Error(`Safety check failed: ${r.status}`);
+        return r.json();
+      }),
+      fetch(`/api/drugs/side-effects?keys=${encodeURIComponent(allMedKeys)}`).then((r) =>
+        r.ok ? r.json() : {}
+      ),
+    ])
+      .then(([safety, sideEffects]) => {
+        setSafetyResult(safety);
+        setSideEffectsMap(sideEffects);
+        setSafetyLoading(false);
+      })
+      .catch((err) => {
+        console.error('Safety check failed:', err);
+        setSafetyError('Could not reach the backend. Make sure the server is running (npm run server).');
+        setSafetyLoading(false);
+      });
+  }, [patient]);
 
   const flaggedMeds = useMemo(() => getFlaggedMeds(safetyResult), [safetyResult]);
 
@@ -75,7 +140,7 @@ const DischargeWorkflow = () => {
   };
 
   const handleRunSafetyCheck = () => {
-    if (!patient) return;
+    if (!patient || safetyLoading) return;
     setCurrentStep(2);
   };
 
@@ -199,8 +264,24 @@ const DischargeWorkflow = () => {
             )}
           </section>
 
-          {/* ── STEP 2+: SAFETY ALERTS ── */}
-          {currentStep >= 2 && safetyResult && (
+          {/* ── STEP 2+: SAFETY ALERTS — loading / error / results ── */}
+          {currentStep >= 2 && safetyLoading && (
+            <div className="card p-12 text-center animate-fade-in">
+              <Loader2 className="w-10 h-10 animate-spin text-clinical-teal mx-auto mb-4" />
+              <p className="font-semibold text-gray-800">Running safety checks…</p>
+              <p className="text-sm text-gray-500 mt-1">Checking interactions, renal dosing, ADEs, and prescribing cascades.</p>
+            </div>
+          )}
+
+          {currentStep >= 2 && safetyError && !safetyLoading && (
+            <div className="card p-8 text-center border-red-200 animate-fade-in">
+              <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+              <p className="font-semibold text-red-800">Safety check unavailable</p>
+              <p className="text-sm text-red-600 mt-1">{safetyError}</p>
+            </div>
+          )}
+
+          {currentStep >= 2 && safetyResult && !safetyLoading && (
             <section className="space-y-4 mb-6 animate-fade-in">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -356,7 +437,11 @@ const DischargeWorkflow = () => {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {allMeds.map((med, idx) => (
-                      <WatchOutSymptomCard key={idx} medication={med} />
+                      <WatchOutSymptomCard
+                        key={idx}
+                        medication={med}
+                        sideEffects={sideEffectsMap[med.drug]}
+                      />
                     ))}
                   </div>
                 </div>

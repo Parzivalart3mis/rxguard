@@ -1,24 +1,63 @@
 import { TrendingUp, AlertTriangle, Info } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { getResistanceTrend, getSpectrumPosition } from '../services/recommendationEngine.js';
+
+// ── Local (fallback) imports — only used when antibiogramData prop is not provided ──
+import { getResistanceTrend as getResistanceTrendLocal, getSpectrumPosition as getSpectrumPositionLocal } from '../services/recommendationEngine.js';
 
 const getConditionPathogen = (cond) => {
   if (!cond) return 'E. coli';
-  if (cond.includes('uti')) return 'E. coli';
+  if (cond.includes('uti'))         return 'E. coli';
   if (cond.includes('pharyngitis')) return 'GAS';
-  if (cond.includes('pneumonia')) return 'S. pneumoniae';
-  if (cond.includes('cellulitis')) return 'S. aureus';
+  if (cond.includes('pneumonia'))   return 'S. pneumoniae';
+  if (cond.includes('cellulitis'))  return 'S. aureus';
   return 'E. coli';
 };
 
-const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
+// ── Derive spectrum position from antibiogramData prop ────────────────────────
+const getSpectrumPositionFromData = (antibiotic, data) => {
+  const meta = data?.antibioticMetadata?.[antibiotic];
+  if (!meta) return { category: 'unknown', rank: 4 };
+  return { category: meta.spectrum || 'unknown', rank: meta.spectrumRank || 4 };
+};
+
+// ── Derive resistance trend from antibiogramData prop ─────────────────────────
+// Reconstructs compositeKey "drug_pathogenSuffix" used as historicalResistance key.
+const PATHOGEN_TO_SUFFIX = {
+  'E. coli':    'ecoli',
+  'GAS':        'gas',
+  'S. pneumoniae': 'spneumo',
+  'S. aureus':  'saureus',
+  'H. influenzae': 'hinfluenzae',
+  'M. catarrhalis': 'mcatarrhalis',
+};
+
+const getResistanceTrendFromData = (antibiotic, pathogenLabel, data) => {
+  if (!data?.historicalResistance) return null;
+  const suffix = PATHOGEN_TO_SUFFIX[pathogenLabel];
+  if (suffix) {
+    const direct = data.historicalResistance[`${antibiotic}_${suffix}`];
+    if (direct) return direct;
+  }
+  // Fallback: find first key matching drug
+  const key = Object.keys(data.historicalResistance).find((k) => k.startsWith(`${antibiotic}_`));
+  return key ? data.historicalResistance[key] : null;
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+const ResistanceCostVisualizer = ({ antibiotic, condition, antibiogramData }) => {
   if (!antibiotic) return null;
 
-  const spectrumPos = getSpectrumPosition(antibiotic);
-
-  // Get resistance trend data
   const pathogen = getConditionPathogen(condition);
-  const trendData = getResistanceTrend(antibiotic, pathogen);
+
+  // Use API data when available, fall back to local imports
+  const spectrumPos = antibiogramData
+    ? getSpectrumPositionFromData(antibiotic, antibiogramData)
+    : getSpectrumPositionLocal(antibiotic);
+
+  const trendData = antibiogramData
+    ? getResistanceTrendFromData(antibiotic, pathogen, antibiogramData)
+    : getResistanceTrendLocal(antibiotic, pathogen);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -31,7 +70,6 @@ const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
       <div className="mb-6">
         <p className="text-sm font-medium text-gray-700 mb-3">Antibiotic Spectrum</p>
         <div className="relative h-8 bg-gray-100 rounded-full overflow-hidden">
-          {/* Spectrum segments */}
           <div className="absolute left-0 top-0 h-full w-1/4 bg-green-200 flex items-center justify-center text-xs font-medium text-green-800">
             Narrow
           </div>
@@ -44,16 +82,16 @@ const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
           <div className="absolute left-3/4 top-0 h-full w-1/4 bg-red-200 flex items-center justify-center text-xs font-medium text-red-800">
             Very Broad
           </div>
-          
+
           {/* Current position indicator */}
-          <div 
+          <div
             className="absolute top-0 w-1 h-full bg-clinical-navy transition-all duration-500"
-            style={{ 
+            style={{
               left: `${(spectrumPos.rank - 1) / 4 * 100 + 12.5}%`,
-              transform: 'translateX(-50%)'
+              transform: 'translateX(-50%)',
             }}
           >
-            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-clinical-navy rounded-full"></div>
+            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-clinical-navy rounded-full" />
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-2 text-center">
@@ -70,30 +108,10 @@ const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
           <div className="h-32">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
-                <XAxis 
-                  dataKey="year" 
-                  tick={{fontSize: 10}} 
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis 
-                  tick={{fontSize: 10}} 
-                  axisLine={false}
-                  tickLine={false}
-                  domain={[0, 'auto']}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <Tooltip 
-                  formatter={(v) => [`${v}%`, 'Resistance']}
-                  labelFormatter={(l) => `Year: ${l}`}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="resistance" 
-                  stroke="#dc2626" 
-                  strokeWidth={2}
-                  dot={{fill: '#dc2626', strokeWidth: 0, r: 3}}
-                />
+                <XAxis dataKey="year" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} />
+                <Tooltip formatter={(v) => [`${v}%`, 'Resistance']} labelFormatter={(l) => `Year: ${l}`} />
+                <Line type="monotone" dataKey="resistance" stroke="#dc2626" strokeWidth={2} dot={{ fill: '#dc2626', strokeWidth: 0, r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -111,11 +129,9 @@ const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-amber-800 mb-1">
-              Stewardship Impact
-            </p>
+            <p className="text-sm font-semibold text-amber-800 mb-1">Stewardship Impact</p>
             <p className="text-sm text-amber-700">
-              Broad-spectrum antibiotics like {antibiotic} accelerate resistance development. 
+              Broad-spectrum antibiotics like {antibiotic} accelerate resistance development.
               Consider narrow-spectrum alternatives when clinically appropriate.
             </p>
           </div>
@@ -126,7 +142,7 @@ const ResistanceCostVisualizer = ({ antibiotic, condition }) => {
       <div className="mt-4 flex items-start gap-2 text-gray-500">
         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <p className="text-xs">
-          Data based on Metro General Hospital antibiogram 2021-2025. 
+          Data based on Metro General Hospital antibiogram 2021-2025.
           Clinical judgment should guide all prescribing decisions.
         </p>
       </div>

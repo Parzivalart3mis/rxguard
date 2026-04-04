@@ -1,18 +1,33 @@
-// Discharge instruction generator using Groq AI
+// Discharge instruction generator
+//
+// Calls are proxied through our own backend (/api/ai/groq) so that
+// the Groq API key is never exposed in the browser bundle.
+// All functions fall back to rule-based generators on any error.
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_URL = '/api/ai/groq';
+
+const callGroq = async (payload) => {
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.error) throw new Error(data.error);
+  return data.choices[0].message.content;
+};
 
 /**
  * Generate simplified medication instructions
  */
 export const generateMedicationInstructions = async (patient) => {
   const allMeds = [...patient.continuingMeds, ...patient.newMeds];
-  
-  if (!GROQ_API_KEY) {
-    return generateFallbackInstructions(patient, allMeds);
-  }
-  
+
   const prompt = `You are writing discharge medication instructions for a patient.
 The patient has no medical background. Write at a 6th-grade reading level.
 For each medication, provide:
@@ -31,28 +46,14 @@ Format as a clean, numbered list. No medical jargon.
 Use language like "blood pressure pill" not "antihypertensive."`;
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 800,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 800,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('Discharge instructions error:', error);
     return generateFallbackInstructions(patient, allMeds);
   }
 };
@@ -61,10 +62,6 @@ Use language like "blood pressure pill" not "antihypertensive."`;
  * Generate follow-up action items
  */
 export const generateFollowUpActions = async (patient, safetyAlerts) => {
-  if (!GROQ_API_KEY) {
-    return generateFallbackFollowUp(patient, safetyAlerts);
-  }
-  
   const prompt = `Generate follow-up action items for a patient being discharged.
 
 Patient: ${patient.name}, ${patient.age} years old
@@ -90,28 +87,14 @@ FOR YOUR DOCTOR (provider follow-up):
 Use checkbox format (☐). Be specific and actionable.`;
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 600,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 600,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('Follow-up actions error:', error);
     return generateFallbackFollowUp(patient, safetyAlerts);
   }
 };
@@ -120,10 +103,10 @@ Use checkbox format (☐). Be specific and actionable.`;
  * Generate ADE warning cards
  */
 export const generateADECards = async (patient, adeAlerts) => {
-  if (!GROQ_API_KEY || adeAlerts.length === 0) {
+  if (adeAlerts.length === 0) {
     return generateFallbackADECards(patient, adeAlerts);
   }
-  
+
   const prompt = `For each of the following medications with potential side effects, generate a "Watch-Out Card".
 Split symptoms into two groups:
 
@@ -145,41 +128,28 @@ ${adeAlerts.map(a => `- ${a.topMatch.drug}: ${a.topMatch.sideEffect.description}
 Format clearly with emojis and bullet points.`;
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 600,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    return await callGroq({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 600,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
   } catch (error) {
-    console.error('Groq API error:', error);
+    console.error('ADE cards error:', error);
     return generateFallbackADECards(patient, adeAlerts);
   }
 };
 
-// Fallback generators
+// ── fallback generators ───────────────────────────────────────────────────────
+
 const generateFallbackInstructions = (patient, meds) => {
   const lines = [
     `DISCHARGE MEDICATIONS FOR ${patient.name.toUpperCase()}`,
     '',
     'Take these medications exactly as prescribed:',
-    ''
+    '',
   ];
-  
+
   meds.forEach((med, idx) => {
     const simpleName = getSimpleDrugName(med.drug);
     lines.push(`${idx + 1}. ${med.drug.toUpperCase()} ${med.dose}`);
@@ -189,13 +159,13 @@ const generateFallbackInstructions = (patient, meds) => {
     lines.push(`   ⚠️ Do not stop taking without talking to your doctor.`);
     lines.push('');
   });
-  
+
   lines.push('If you miss a dose:');
   lines.push('- Take it as soon as you remember, unless it is almost time for your next dose');
   lines.push('- Never double up on doses');
   lines.push('');
   lines.push('Call your doctor if you have questions or concerns.');
-  
+
   return lines.join('\n');
 };
 
@@ -206,60 +176,58 @@ const generateFallbackFollowUp = (patient, safetyAlerts) => {
     'FOR YOU:',
     '☐ Schedule follow-up appointment within 2 weeks',
     '☐ Take all medications as prescribed',
-    ''
+    '',
   ];
-  
+
   if (patient.labs.egfr < 60) {
     lines.push('☐ Get blood work in 7 days (kidney function and potassium)');
   }
-  
+
   if (safetyAlerts.some(a => a.type === 'ade')) {
     lines.push('☐ Watch for side effects and report any concerns');
   }
-  
+
   lines.push('');
   lines.push('FOR YOUR DOCTOR:');
-  
+
   safetyAlerts.forEach(alert => {
     lines.push(`☐ ${alert.action}`);
   });
-  
+
   return lines.join('\n');
 };
 
-const generateFallbackADECards = (patient, adeAlerts) => {
-  if (adeAlerts.length === 0) {
-    return 'No adverse drug events detected.';
-  }
-  
+const generateFallbackADECards = (_patient, adeAlerts) => {
+  if (adeAlerts.length === 0) return 'No adverse drug events detected.';
+
   const lines = ['WATCH-OUT SYMPTOMS:\n'];
-  
+
   adeAlerts.forEach(alert => {
     lines.push(`${alert.topMatch.drug.toUpperCase()}:`);
     lines.push(`🔴 Call doctor if: ${alert.topMatch.sideEffect.description} is severe`);
     lines.push(`🟡 Common: ${alert.topMatch.sideEffect.description} affects ${alert.topMatch.sideEffect.pct}% of people`);
     lines.push('');
   });
-  
+
   return lines.join('\n');
 };
 
 const getSimpleDrugName = (drug) => {
   const mappings = {
-    'lisinopril': 'Blood pressure pill',
-    'amlodipine': 'Blood pressure pill',
-    'metoprolol': 'Blood pressure pill',
-    'metformin': 'Diabetes pill',
-    'atorvastatin': 'Cholesterol pill',
-    'omeprazole': 'Heartburn pill',
-    'sertraline': 'Mood pill',
-    'furosemide': 'Water pill',
-    'warfarin': 'Blood thinner',
-    'amoxicillin': 'Antibiotic',
-    'azithromycin': 'Antibiotic',
-    'nitrofurantoin': 'Antibiotic',
-    'ibuprofen': 'Pain pill',
-    'potassium_chloride': 'Potassium supplement'
+    lisinopril:         'Blood pressure pill',
+    amlodipine:         'Blood pressure pill',
+    metoprolol:         'Blood pressure pill',
+    metformin:          'Diabetes pill',
+    atorvastatin:       'Cholesterol pill',
+    omeprazole:         'Heartburn pill',
+    sertraline:         'Mood pill',
+    furosemide:         'Water pill',
+    warfarin:           'Blood thinner',
+    amoxicillin:        'Antibiotic',
+    azithromycin:       'Antibiotic',
+    nitrofurantoin:     'Antibiotic',
+    ibuprofen:          'Pain pill',
+    potassium_chloride: 'Potassium supplement',
   };
   return mappings[drug] || drug;
 };
@@ -267,5 +235,5 @@ const getSimpleDrugName = (drug) => {
 export default {
   generateMedicationInstructions,
   generateFollowUpActions,
-  generateADECards
+  generateADECards,
 };

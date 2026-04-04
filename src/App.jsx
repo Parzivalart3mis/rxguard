@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { AlertCircle, CheckCircle } from 'lucide-react';
+
+const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === 'true';
 
 import Navbar from './components/Navbar.jsx';
 import PatientSelector from './components/PatientSelector.jsx';
@@ -21,6 +23,16 @@ function App() {
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideData, setOverrideData] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [antibiogramData, setAntibiogramData] = useState(null);
+
+  // Fetch antibiogram metadata once on mount when backend mode is active
+  useEffect(() => {
+    if (!USE_BACKEND) return;
+    fetch('/api/antibiogram')
+      .then((r) => r.json())
+      .then(setAntibiogramData)
+      .catch((err) => console.error('Failed to load antibiogram data:', err));
+  }, []);
 
   const scoreResult = useMemo(() => {
     if (selectedPatient) return calculateBacterialProbability(selectedPatient);
@@ -96,12 +108,14 @@ function App() {
                   <BacterialProbabilityGauge scoreResult={scoreResult} patient={selectedPatient} />
                   <AntibioticRecommender
                     patient={selectedPatient}
+                    antibiogramData={antibiogramData}
                     onPrescribe={handlePrescribe}
                     onOverride={handleOverrideRequest}
                   />
                   <ResistanceCostVisualizer
                     antibiotic={selectedAntibiotic}
                     condition={getConditionFromScore()}
+                    antibiogramData={antibiogramData}
                   />
                 </>
               ) : (
