@@ -132,6 +132,18 @@ CREATE TABLE IF NOT EXISTS antibiogram_history (
 
 CREATE INDEX IF NOT EXISTS idx_hist_drug ON antibiogram_history(drug_key);
 
+-- ── Demo EHR write-back tracking ──────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS demo_written_resources (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  fhir_resource_type TEXT    NOT NULL DEFAULT 'MedicationRequest',
+  fhir_resource_id   TEXT    NOT NULL,
+  fhir_base_url      TEXT    NOT NULL,
+  patient_id         TEXT,
+  antibiotic_key     TEXT,
+  created_at         TEXT    DEFAULT (datetime('now'))
+);
+
 -- ── Ingestion audit log ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS ingestion_log (

@@ -16,6 +16,7 @@ import {
   fetchAllergies,
 } from '../services/fhirFetcher.js';
 import { assemblePatient, mapPatient } from '../services/fhirMapper.js';
+import db from '../db/client.js';
 
 const router = Router();
 
@@ -99,6 +100,65 @@ router.get('/fhir/patients/:id', async (req, res, next) => {
     );
 
     res.json(patient);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/fhir/medication-request ────────────────────────────────────────
+// Writes a MedicationRequest to the FHIR sandbox and tracks its ID for demo reset.
+router.post('/fhir/medication-request', async (req, res, next) => {
+  const { patientId, patientName, antibiotic, displayName, dose, condition, duration } = req.body;
+  if (!antibiotic) return res.status(400).json({ error: 'antibiotic is required' });
+
+  const medicationRequest = {
+    resourceType: 'MedicationRequest',
+    status: 'active',
+    intent: 'order',
+    meta: {
+      tag: [{ system: 'http://rxguard.demo', code: 'demo' }],
+    },
+    subject: {
+      display: patientName ? `${patientName} (RxGuard Demo)` : 'RxGuard Demo Patient',
+    },
+    medicationCodeableConcept: {
+      text: displayName || antibiotic,
+    },
+    dosageInstruction: [
+      {
+        text: [dose, duration].filter(Boolean).join(' for ') || 'As directed',
+      },
+    ],
+    reasonCode: condition ? [{ text: condition }] : [],
+    note: [{ text: 'Prescribed via RxGuard antibiotic stewardship plugin (demo)' }],
+    authoredOn: new Date().toISOString(),
+  };
+
+  try {
+    const response = await fetch(`${FHIR_BASE_URL}/MedicationRequest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/fhir+json',
+        Accept: 'application/fhir+json',
+      },
+      body: JSON.stringify(medicationRequest),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`FHIR server returned ${response.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const created = await response.json();
+    const resourceId = created.id;
+
+    db.prepare(`
+      INSERT INTO demo_written_resources (fhir_resource_type, fhir_resource_id, fhir_base_url, patient_id, antibiotic_key)
+      VALUES ('MedicationRequest', ?, ?, ?, ?)
+    `).run(resourceId, FHIR_BASE_URL, patientId || null, antibiotic);
+
+    console.log(`[FHIR write] MedicationRequest/${resourceId} created for ${patientName || patientId} (${antibiotic})`);
+    res.json({ success: true, resourceId, resourceType: 'MedicationRequest', fhirUrl: `${FHIR_BASE_URL}/MedicationRequest/${resourceId}` });
   } catch (err) {
     next(err);
   }

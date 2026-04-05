@@ -12,7 +12,8 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "seed": "node scripts/seed/seed-from-js.js",
     "verify": "node scripts/verify-seed.js",
-    "sync:rxnorm": "node scripts/ingest/sync-rxnorm-cuis.js"
+    "sync:rxnorm": "node scripts/ingest/sync-rxnorm-cuis.js",
+    "demo:reset": "node scripts/demo-reset.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

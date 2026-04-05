@@ -112,6 +112,19 @@ const migratePathogens = db.transaction(() => {
 });
 migratePathogens();
 
+// ── Startup migration: create demo_written_resources if missing ───────────────
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS demo_written_resources (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    fhir_resource_type TEXT    NOT NULL DEFAULT 'MedicationRequest',
+    fhir_resource_id   TEXT    NOT NULL,
+    fhir_base_url      TEXT    NOT NULL,
+    patient_id         TEXT,
+    antibiotic_key     TEXT,
+    created_at         TEXT    DEFAULT (datetime('now'))
+  )
+`).run();
+
 app.listen(PORT, () => {
   console.log(`RxGuard backend listening on http://localhost:${PORT}`);
   console.log(`  GROQ_API_KEY:   ${process.env.GROQ_API_KEY ? 'set ✓' : 'not set (AI fallbacks will be used)'}`);

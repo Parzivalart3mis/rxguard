@@ -89,6 +89,7 @@ function App() {
   const getConditionFromScore = () => scoreResult?.condition || '';
   const prescription = activePatient ? acceptedPrescriptions[activePatient.name] : null;
 
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-[#09111f] overflow-hidden">
 

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   AlertTriangle, CheckCircle, Loader2,
-  ClipboardList, Zap, FileText, Users, ArrowRight, ShieldCheck, Printer, ArrowLeft, RefreshCw
+  ClipboardList, Zap, FileText, Users, ArrowRight, ShieldCheck, Printer, ArrowLeft, RefreshCw, Upload
 } from 'lucide-react';
 
 import PageHeader from './PageHeader.jsx';
@@ -129,6 +129,33 @@ const DischargeWorkflow = ({ onNavigate }) => {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [resolvedAlerts, setResolvedAlerts] = useState([]);
+  const [ehrWriteState, setEhrWriteState] = useState(null); // null | 'writing' | { resourceId } | 'error'
+
+  const prescription = activePatient ? acceptedPrescriptions?.[activePatient.name] : null;
+
+  const handleWriteToEHR = async () => {
+    if (!prescription || !activePatient) return;
+    setEhrWriteState('writing');
+    try {
+      const res = await fetch('/api/fhir/medication-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId:   activePatient.id,
+          patientName: activePatient.name,
+          antibiotic:  prescription.antibiotic,
+          displayName: prescription.name,
+          dose:        prescription.dose,
+          duration:    prescription.duration,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Write failed');
+      setEhrWriteState({ resourceId: data.resourceId });
+    } catch (err) {
+      setEhrWriteState('error');
+    }
+  };
   const [generating, setGenerating] = useState(false);
   const [dischargeOutput, setDischargeOutput] = useState(null);
   const [selectedCascade, setSelectedCascade] = useState(null);
@@ -602,15 +629,30 @@ const DischargeWorkflow = ({ onNavigate }) => {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={handleGenerate}
-                    disabled={!proceedCheck?.canProceed || generating}
-                    className="btn-primary flex-shrink-0"
-                  >
-                    {generating
-                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
-                      : <><FileText className="w-4 h-4" /> Generate Discharge</>}
-                  </button>
+                  <div className="flex gap-2 flex-shrink-0">
+                    {prescription && (
+                      <button
+                        onClick={handleWriteToEHR}
+                        disabled={ehrWriteState === 'writing' || !!ehrWriteState?.resourceId}
+                        className="btn-secondary text-sm"
+                      >
+                        {ehrWriteState === 'writing'
+                          ? <><Upload className="w-4 h-4 animate-pulse" /> Writing…</>
+                          : ehrWriteState?.resourceId
+                            ? <><CheckCircle className="w-4 h-4 text-green-500" /> Written to EHR</>
+                            : <><Upload className="w-4 h-4" /> Write to EHR</>}
+                      </button>
+                    )}
+                    <button
+                      onClick={handleGenerate}
+                      disabled={!proceedCheck?.canProceed || generating}
+                      className="btn-primary"
+                    >
+                      {generating
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+                        : <><FileText className="w-4 h-4" /> Generate Discharge</>}
+                    </button>
+                  </div>
                 </div>
               )}
             </section>
