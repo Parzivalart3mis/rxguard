@@ -186,22 +186,72 @@ const checkRecentAntibiotic = (drugKey, meta, pastAntibiotics = []) => {
   return { concern: false, message: null };
 };
 
-const getResistanceData = (drugKey, typicalPathogens = []) => {
-  const results = [];
-  for (const pathogen of typicalPathogens) {
-    // Use LIKE for partial matching (e.g., "GAS" matches "GAS (Group A Strep)")
-    const row = stmtResistance.get(drugKey, `%${pathogen}%`);
-    if (row) {
-      results.push({
-        pathogen:      row.pathogen,
+/**
+ * Returns prevalence-weighted expected coverage for a drug across typical pathogens.
+ *
+ * Implements the IDSA/SHEA recommendation (Clin Infect Dis 2016;62:e51-e77):
+ * empiric coverage should be assessed as P(coverage) = Σ P(pathogen|condition) ×
+ * P(susceptible|drug, pathogen), not worst-case across organisms.
+ *
+ * Supports:
+ *   - culture override: if cultureOrganism is set, only that pathogen is used
+ *   - both old string[] format and new {pathogen, weight}[] format
+ *   - normalized weighting: weights are normalized to pathogens that have
+ *     antibiogram data, so a missing pathogen doesn't dilute the score
+ *
+ * Returns null if no antibiogram data exists for any pathogen.
+ */
+const getResistanceData = (drugKey, typicalPathogens = [], cultureOrganism = null) => {
+  // Culture override — skip prevalence weighting, use identified organism only
+  if (cultureOrganism) {
+    const row = stmtResistance.get(drugKey, `%${cultureOrganism}%`);
+    if (!row) return null;
+    return {
+      isCultureGuided: true,
+      expectedCoverage: row.susceptibility,
+      pathogens: [{
+        pathogen:       row.pathogen,
         susceptibility: row.susceptibility,
         resistance:     row.resistance,
         trend:          row.trend,
+        weight:         1.0,
+      }],
+    };
+  }
+
+  // Normalize: support both ["E. coli"] and [{ pathogen, weight }]
+  const normalized = typicalPathogens.map(p =>
+    typeof p === 'string' ? { pathogen: p, weight: 1 } : p
+  );
+
+  const results = [];
+  for (const { pathogen, weight } of normalized) {
+    const row = stmtResistance.get(drugKey, `%${pathogen}%`);
+    if (row) {
+      results.push({
+        pathogen:       row.pathogen,
+        susceptibility: row.susceptibility,
+        resistance:     row.resistance,
+        trend:          row.trend,
+        weight,
       });
     }
   }
+
   if (!results.length) return null;
-  return results.reduce((max, cur) => cur.resistance > max.resistance ? cur : max);
+
+  // Normalize weights to only pathogens with antibiogram data, then compute
+  // prevalence-weighted expected coverage (CLSI M39-A4 / IDSA approach)
+  const totalWeight = results.reduce((sum, r) => sum + r.weight, 0);
+  const expectedCoverage = Math.round(
+    results.reduce((sum, r) => sum + r.susceptibility * r.weight, 0) / totalWeight
+  );
+
+  return {
+    isCultureGuided: false,
+    expectedCoverage,
+    pathogens: results,
+  };
 };
 
 const generateRationale = (choice, guideline) => {
@@ -213,14 +263,14 @@ const generateRationale = (choice, guideline) => {
     parts.push('It provides narrow-spectrum coverage targeted to typical pathogens.');
   }
   if (choice.resistanceData) {
-    if (choice.resistanceData.resistance < 10) {
-      parts.push(
-        `Local ${choice.resistanceData.pathogen} susceptibility is excellent (${choice.resistanceData.susceptibility}%).`
-      );
-    } else if (choice.resistanceData.resistance > 20) {
-      parts.push(
-        `Note: Local ${choice.resistanceData.pathogen} resistance is ${choice.resistanceData.resistance}%.`
-      );
+    const { expectedCoverage, isCultureGuided, pathogens } = choice.resistanceData;
+    if (isCultureGuided) {
+      const p = pathogens[0];
+      parts.push(`Culture-guided: local ${p.pathogen} susceptibility is ${p.susceptibility}%.`);
+    } else if (expectedCoverage >= 90) {
+      parts.push(`Expected local pathogen coverage is excellent (${expectedCoverage}%).`);
+    } else if (expectedCoverage < 80) {
+      parts.push(`Note: Expected local pathogen coverage is ${expectedCoverage}% — consider alternatives with higher local susceptibility.`);
     }
   }
   return parts.join(' ');
@@ -239,12 +289,13 @@ const rankAlternatives = (guideline, patient, excludeKey = null) => {
     if (!allergyCheck.safe) continue;
 
     const recentCheck   = checkRecentAntibiotic(key, meta, patient.pastAntibiotics);
-    const resistanceData = getResistanceData(key, guideline.typicalPathogens);
+    const resistanceData = getResistanceData(key, guideline.typicalPathogens, patient.organism ?? null);
 
     let score = (meta.spectrumRank || 4) * 10;
     if (allergyCheck.warnings.length)        score += 50;
     if (recentCheck.concern)                 score += 30;
-    if (resistanceData)                      score += resistanceData.resistance * 0.5;
+    // Use (100 - expectedCoverage) so low coverage increases score (worse rank)
+    if (resistanceData)                      score += (100 - resistanceData.expectedCoverage) * 0.5;
     if (guideline.firstLine.includes(key))   score -= 15;
     if (!guideline.firstLine.includes(key))  score += 5;
 
@@ -272,7 +323,7 @@ const getAntibioticAssessment = (key, patient, guideline) => {
 
   const allergyCheck   = checkAllergies(key, meta, patient.allergies);
   const recentCheck    = checkRecentAntibiotic(key, meta, patient.pastAntibiotics);
-  const resistanceData = getResistanceData(key, guideline.typicalPathogens);
+  const resistanceData = getResistanceData(key, guideline.typicalPathogens, patient.organism ?? null);
   const isFirstLine    = guideline.firstLine.includes(key);
   const isAlternative  = guideline.alternatives.includes(key);
 
@@ -289,8 +340,8 @@ const getAntibioticAssessment = (key, patient, guideline) => {
     concerns: [
       ...(allergyCheck.warnings || []),
       ...(recentCheck.message ? [recentCheck.message] : []),
-      ...(resistanceData && resistanceData.resistance > 20
-        ? [`High local resistance: ${resistanceData.resistance}%`]
+      ...(resistanceData && resistanceData.expectedCoverage < 80
+        ? [`Expected local pathogen coverage is only ${resistanceData.expectedCoverage}% — consider a drug with higher local susceptibility`]
         : []),
       ...(!isFirstLine && !isAlternative ? ['Not typically indicated for this condition'] : []),
     ].filter(Boolean),
@@ -376,7 +427,7 @@ export const getRecommendation = (patient, selectedAntibiotic = null) => {
     if (meta) {
       const allergyCheck  = checkAllergies(selectedAntibiotic, meta, patient.allergies);
       const recentCheck   = checkRecentAntibiotic(selectedAntibiotic, meta, patient.pastAntibiotics);
-      const resistanceData = getResistanceData(selectedAntibiotic, guideline.typicalPathogens);
+      const resistanceData = getResistanceData(selectedAntibiotic, guideline.typicalPathogens, patient.organism ?? null);
       if (allergyCheck.safe) alternatives.unshift({
         antibiotic:       selectedAntibiotic,
         name:             meta.name,

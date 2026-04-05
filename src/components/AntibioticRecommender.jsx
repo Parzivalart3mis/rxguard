@@ -282,18 +282,46 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
               </div>
             )}
             {assessment.resistanceData && (
-              <div className="data-row px-4">
-                <span className="data-label">Local susceptibility</span>
-                <span className={`text-sm font-semibold ${
-                  assessment.resistanceData.susceptibility >= 90 ? 'text-green-600 dark:text-green-400' :
-                  assessment.resistanceData.susceptibility >= 80 ? 'text-yellow-600 dark:text-yellow-400' :
-                  'text-red-600 dark:text-red-400'
-                }`}>
-                  {assessment.resistanceData.susceptibility}%
-                  <span className="text-gray-400 dark:text-gray-500 text-xs font-normal ml-1">
-                    ({assessment.resistanceData.pathogen})
+              <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                <div className="flex items-center justify-between">
+                  <span className="data-label">
+                    {assessment.resistanceData.isCultureGuided ? 'Culture-guided coverage' : 'Expected local coverage'}
                   </span>
-                </span>
+                  <span className={`text-sm font-semibold ${
+                    assessment.resistanceData.expectedCoverage >= 90 ? 'text-green-600 dark:text-green-400' :
+                    assessment.resistanceData.expectedCoverage >= 80 ? 'text-yellow-600 dark:text-yellow-400' :
+                    'text-red-600 dark:text-red-400'
+                  }`}>
+                    {assessment.resistanceData.expectedCoverage}%
+                    {assessment.resistanceData.isCultureGuided && (
+                      <span className="ml-1.5 text-xs font-normal px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">culture</span>
+                    )}
+                  </span>
+                </div>
+                {/* Per-pathogen breakdown */}
+                {assessment.resistanceData.pathogens?.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {assessment.resistanceData.pathogens.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                        <span>{p.pathogen}</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className={
+                            p.susceptibility >= 90 ? 'text-green-500 dark:text-green-400' :
+                            p.susceptibility >= 80 ? 'text-yellow-500 dark:text-yellow-400' :
+                            'text-red-500 dark:text-red-400'
+                          }>{p.susceptibility}%</span>
+                          {p.trend === 'declining' && <span title="Resistance trend worsening">↓</span>}
+                          {p.trend === 'stable' && <span title="Resistance trend stable">→</span>}
+                        </span>
+                      </div>
+                    ))}
+                    {!assessment.resistanceData.isCultureGuided && assessment.resistanceData.pathogens.length > 1 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-600 italic mt-1">
+                        Weighted by local pathogen prevalence
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {rec?.duration && (
@@ -413,9 +441,20 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
                         </span>
                       </div>
                       {alt.resistanceData && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
-                          {alt.resistanceData.pathogen} susceptibility: {alt.resistanceData.susceptibility}%
-                        </p>
+                        <div className="mt-1.5 space-y-0.5">
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            Expected coverage: <span className={
+                              alt.resistanceData.expectedCoverage >= 90 ? 'text-green-500 dark:text-green-400 font-medium' :
+                              alt.resistanceData.expectedCoverage >= 80 ? 'text-yellow-500 dark:text-yellow-400 font-medium' :
+                              'text-red-500 dark:text-red-400 font-medium'
+                            }>{alt.resistanceData.expectedCoverage}%</span>
+                          </p>
+                          {alt.resistanceData.pathogens?.map((p, i) => (
+                            <p key={i} className="text-xs text-gray-400 dark:text-gray-600">
+                              {p.pathogen}: {p.susceptibility}%
+                            </p>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))}
