@@ -52,7 +52,7 @@ function normalizeName(name) {
   return name
     .toLowerCase()
     .replace(/\d+\s*(?:mg|mcg|μg|ug|ml|g|units?|meq)\b/gi, '') // dosage tokens
-    .replace(/[\/\-\(\)\+\[\],\.]/g, ' ')                        // punctuation → space
+    .replace(/[/\-()+[\],.]/g, ' ')                              // punctuation → space
     .replace(/\s+/g, ' ')
     .trim();
 }

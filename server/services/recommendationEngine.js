@@ -53,42 +53,66 @@ const parseDrug = (row) => {
   };
 };
 
-// ── Condition determination (copied from src/services/scoringEngine.js) ───────
+// ── Condition determination ───────────────────────────────────────────────────
+// Iterates ALL patient conditions (not just index 0) and matches by ICD-10
+// prefix OR display string so both synthetic and FHIR patients work.
+
+const CONDITION_MATCHERS = [
+  [(c) => c.code.startsWith('J02') || /pharyngitis|strep throat|sore throat|tonsill/.test(c.display),
+   (patient) => (patient.centorScore >= 4 ? 'strep_pharyngitis' : 'viral_pharyngitis')],
+
+  [(c) => c.code.startsWith('N30') || c.code.startsWith('N10') || c.code.startsWith('N11') ||
+          c.code.startsWith('N12') ||
+          /urinary tract infection|cystitis|pyelonephritis|\buti\b/.test(c.display),
+   (patient) => {
+     const recurrent = (patient.conditions || []).some((cx) =>
+       /recurrent|complicated|chronic/.test((cx.display || '').toLowerCase()) &&
+       /urinary tract infection|cystitis/.test((cx.display || '').toLowerCase())
+     );
+     return recurrent ? 'complicated_uti' : 'uncomplicated_uti';
+   }],
+
+  [(c) => c.code.startsWith('J18') || c.code.startsWith('J15') || c.code.startsWith('J14') ||
+          c.code.startsWith('J13') || /pneumonia|lung infection/.test(c.display),
+   () => 'community_acquired_pneumonia'],
+
+  [(c) => c.code.startsWith('H66') || c.code.startsWith('H65') ||
+          /otitis media|ear infection/.test(c.display),
+   () => 'acute_otitis_media'],
+
+  [(c) => c.code.startsWith('J01') || /sinusitis/.test(c.display),
+   (patient) => {
+     const dur = (patient.observations || []).find((o) =>
+       o.display === 'Duration of symptoms' || o.code === 'duration'
+     );
+     return (dur && parseInt(dur.value) < 10) ? 'viral_sinusitis' : 'acute_sinusitis';
+   }],
+
+  [(c) => c.code.startsWith('J06') || c.code.startsWith('J00') ||
+          (/upper respiratory|common cold|nasopharyngitis|rhinitis/.test(c.display) &&
+           !/sinusitis/.test(c.display)),
+   () => 'viral_uri'],
+
+  [(c) => c.code.startsWith('L03') || c.code.startsWith('L08') ||
+          /cellulitis|skin infection|erysipelas/.test(c.display),
+   () => 'cellulitis'],
+
+  [(c) => c.code.startsWith('J20') || /bronchitis/.test(c.display),
+   () => 'viral_uri'],
+];
 
 const determineCondition = (patient) => {
-  const condition = patient.conditions?.[0];
-  if (!condition) return null;
+  const conditions = patient.conditions || [];
+  if (!conditions.length) return 'general_infection';
 
-  const code    = condition.code;
-  const display = (condition.display || '').toLowerCase();
+  for (const [test, resolve] of CONDITION_MATCHERS) {
+    const matched = conditions.find((c) =>
+      test({ code: c.code || '', display: (c.display || '').toLowerCase() })
+    );
+    if (matched) return typeof resolve === 'function' ? resolve(patient) : resolve;
+  }
 
-  if (code.startsWith('J02') || display.includes('pharyngitis')) {
-    return patient.centorScore >= 4 ? 'strep_pharyngitis' : 'viral_pharyngitis';
-  }
-  if (code.startsWith('N30') || display.includes('cystitis')) {
-    return patient.pastAntibiotics?.length > 0 &&
-           patient.pastAntibiotics[0].date > '2025-01-01'
-      ? 'complicated_uti'
-      : 'uncomplicated_uti';
-  }
-  if (code.startsWith('J18') || display.includes('pneumonia')) {
-    return 'community_acquired_pneumonia';
-  }
-  if (code.startsWith('H66') || display.includes('otitis')) {
-    return 'acute_otitis_media';
-  }
-  if (code.startsWith('J06') || (display.includes('upper respiratory') && !display.includes('sinusitis'))) {
-    return 'viral_uri';
-  }
-  if (code.startsWith('J01') || display.includes('sinusitis')) {
-    const obsMap = new Map((patient.observations || []).map((o) => [o.display, o]));
-    const dur    = obsMap.get('Duration of symptoms');
-    return dur && parseInt(dur.value) < 10 ? 'viral_sinusitis' : 'acute_sinusitis';
-  }
-  if (code.startsWith('L03') || display.includes('cellulitis')) {
-    return 'cellulitis';
-  }
-  return null;
+  return 'general_infection';
 };
 
 // ── Clinical logic (ported from src/services/recommendationEngine.js) ─────────
@@ -314,15 +338,22 @@ const checkPrescribeInteractions = (selectedKey, currentMedicationDrugs = []) =>
 
 export const getRecommendation = (patient, selectedAntibiotic = null) => {
   const conditionKey = determineCondition(patient);
-  if (!conditionKey) {
-    return {
-      error:          'Unable to determine condition for recommendation',
-      recommendation: null,
-      alternatives:   [],
+
+  let guidelineRow = stmtGuideline.get(conditionKey);
+
+  // Fallback: use empiric broad-spectrum guideline for unclassified infections
+  if (!guidelineRow && conditionKey === 'general_infection') {
+    guidelineRow = {
+      condition_key:     'general_infection',
+      name:              'Infection (condition-specific algorithm unavailable)',
+      first_line:        JSON.stringify(['amoxicillin_clav']),
+      alternatives:      JSON.stringify(['doxycycline', 'azithromycin', 'ciprofloxacin']),
+      typical_pathogens: JSON.stringify(['S. aureus', 'S. pneumoniae', 'E. coli', 'H. influenzae']),
+      duration:          '5–7 days (adjust based on clinical response)',
+      notes:             'Empiric broad-spectrum options shown — tailor therapy once culture results available.',
     };
   }
 
-  const guidelineRow = stmtGuideline.get(conditionKey);
   if (!guidelineRow) {
     return {
       error:          'No guidelines available for this condition',

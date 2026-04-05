@@ -13,10 +13,11 @@ import PrescribingDashboard from './components/PrescribingDashboard.jsx';
 import OverrideModal from './components/OverrideModal.jsx';
 import DischargeWorkflow from './components/DischargeWorkflow.jsx';
 
-import patients from './data/patients.js';
+import { usePatients } from './hooks/usePatients.js';
 import { calculateBacterialProbability } from './services/scoringEngine.js';
 
 function App() {
+  const { patients, loading: patientsLoading, getPatient } = usePatients();
   const [activeTab, setActiveTab] = useState('prescribe');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedAntibiotic, setSelectedAntibiotic] = useState('');
@@ -24,6 +25,8 @@ function App() {
   const [overrideData, setOverrideData] = useState(null);
   const [notification, setNotification] = useState(null);
   const [antibiogramData, setAntibiogramData] = useState(null);
+  // Prescriptions accepted in the Prescribe tab, keyed by patient name
+  const [acceptedPrescriptions, setAcceptedPrescriptions] = useState({});
 
   // Fetch antibiogram metadata once on mount when backend mode is active
   useEffect(() => {
@@ -40,9 +43,20 @@ function App() {
   }, [selectedPatient]);
 
   const handlePrescribe = (data) => {
+    if (selectedPatient) {
+      setAcceptedPrescriptions(prev => ({
+        ...prev,
+        [selectedPatient.name]: {
+          antibiotic: data.antibiotic,
+          name: data.name || data.antibiotic,
+          dose: data.dose || 'as prescribed',
+          date: new Date().toISOString().split('T')[0],
+        },
+      }));
+    }
     setNotification({
       type: 'success',
-      message: `Prescription for ${data.antibiotic} recorded. Guideline-concordant prescribing noted.`
+      message: `Prescription for ${data.name || data.antibiotic} recorded. Guideline-concordant prescribing noted.`
     });
     setTimeout(() => setNotification(null), 5000);
   };
@@ -55,9 +69,20 @@ function App() {
 
   const handleOverrideConfirm = (reasonData) => {
     setShowOverrideModal(false);
+    if (selectedPatient && overrideData) {
+      setAcceptedPrescriptions(prev => ({
+        ...prev,
+        [selectedPatient.name]: {
+          antibiotic: overrideData.antibiotic,
+          name: overrideData.name || overrideData.antibiotic,
+          dose: overrideData.dose || 'as prescribed',
+          date: new Date().toISOString().split('T')[0],
+        },
+      }));
+    }
     setNotification({
       type: 'warning',
-      message: `Override recorded: ${overrideData.antibiotic} prescribed. Reason: ${reasonData.reason}`
+      message: `Override recorded: ${overrideData?.name || overrideData?.antibiotic} prescribed. Reason: ${reasonData.reason}`
     });
     setOverrideData(null);
     setTimeout(() => setNotification(null), 5000);
@@ -93,7 +118,14 @@ function App() {
             <PatientSelector
               patients={patients}
               selectedPatient={selectedPatient}
-              onSelect={setSelectedPatient}
+              loading={patientsLoading}
+              onSelect={async (patient) => {
+                if (!patient) { setSelectedPatient(null); return; }
+                // Show the stub immediately so the UI isn't blank, then load full detail
+                setSelectedPatient(patient);
+                const full = await getPatient(patient.id);
+                if (full) setSelectedPatient(full);
+              }}
             />
           </div>
 
@@ -133,7 +165,7 @@ function App() {
           </div>
         </main>
       ) : activeTab === 'discharge' ? (
-        <DischargeWorkflow />
+        <DischargeWorkflow acceptedPrescriptions={acceptedPrescriptions} />
       ) : (
         <PrescribingDashboard />
       )}

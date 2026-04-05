@@ -9,7 +9,7 @@ import SafetyAlertPanel from './SafetyAlertPanel.jsx';
 import CascadeFlowDiagram from './CascadeFlowDiagram.jsx';
 import WatchOutSymptomCard from './WatchOutSymptomCard.jsx';
 
-import dischargePatients from '../data/dischargePatients.js';
+import { useDischargePatients } from '../hooks/useDischargePatients.js';
 import { generateMedicationInstructions, generateFollowUpActions } from '../services/dischargeGenerator.js';
 
 // Pure discharge-gate logic — no data imports needed
@@ -60,19 +60,18 @@ const SeverityBadge = ({ count, label, color }) => {
   );
 };
 
-const DischargeWorkflow = () => {
+const DischargeWorkflow = ({ acceptedPrescriptions = {} }) => {
+  const { patients: dischargePatientsAll, loading: patientsLoading, getDischargePatient } = useDischargePatients();
+
   const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep]   = useState(1);
   const [resolvedAlerts, setResolvedAlerts] = useState([]);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating]     = useState(false);
   const [dischargeOutput, setDischargeOutput] = useState(null);
   const [selectedCascade, setSelectedCascade] = useState(null);
   const [notification, setNotification] = useState(null);
-
-  const patient = useMemo(
-    () => dischargePatients.find(p => p.id === Number(selectedPatientId)) || null,
-    [selectedPatientId]
-  );
+  const [patient, setPatient]           = useState(null);
+  const [patientLoading, setPatientLoading] = useState(false);
 
   const [safetyResult, setSafetyResult] = useState(null);
   const [safetyLoading, setSafetyLoading] = useState(false);
@@ -131,12 +130,46 @@ const DischargeWorkflow = () => {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handlePatientSelect = (id) => {
+  const injectAcceptedPrescription = (resolvedPatient) => {
+    if (!resolvedPatient) return resolvedPatient;
+    const accepted = acceptedPrescriptions[resolvedPatient.name];
+    if (!accepted) return resolvedPatient;
+
+    const newEntry = {
+      drug: accepted.antibiotic,
+      dose: accepted.dose || 'as prescribed',
+      frequency: 'as prescribed',
+      duration: 'as prescribed',
+      startDate: accepted.date,
+      reason: `Prescribed via RxGuard (${accepted.name || accepted.antibiotic})`,
+      _fromPrescribeTab: true,
+    };
+
+    // Replace any existing entry with the same drug key, otherwise prepend
+    const filtered = (resolvedPatient.newMeds || []).filter(m => m.drug !== accepted.antibiotic);
+    return { ...resolvedPatient, newMeds: [newEntry, ...filtered] };
+  };
+
+  const handlePatientSelect = async (id) => {
     setSelectedPatientId(id);
-    setCurrentStep(id ? 1 : 1);
+    setCurrentStep(1);
     setResolvedAlerts([]);
     setDischargeOutput(null);
     setSelectedCascade(null);
+    setSafetyResult(null);
+
+    if (!id) { setPatient(null); return; }
+
+    // For FHIR patients, fetch full detail and map to discharge schema
+    if (String(id).startsWith('fhir-')) {
+      setPatientLoading(true);
+      const full = await getDischargePatient(id);
+      setPatient(injectAcceptedPrescription(full));
+      setPatientLoading(false);
+    } else {
+      const local = dischargePatientsAll.find(p => p.id === id) || null;
+      setPatient(injectAcceptedPrescription(local));
+    }
   };
 
   const handleRunSafetyCheck = () => {
@@ -208,24 +241,52 @@ const DischargeWorkflow = () => {
 
       {/* Patient Selector */}
       <div className="card p-5 mb-6 animate-fade-in">
-        <label className="section-title mb-3">
-          <Users className="w-3.5 h-3.5" />
-          Select Discharge Patient
-        </label>
+        <div className="flex items-center justify-between mb-3">
+          <label className="section-title">
+            <Users className="w-3.5 h-3.5" />
+            Select Discharge Patient
+          </label>
+          {patientsLoading && (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <Loader2 className="w-3 h-3 animate-spin" /> Loading FHIR…
+            </span>
+          )}
+        </div>
         <div className="relative">
           <select
             value={selectedPatientId}
             onChange={e => handlePatientSelect(e.target.value)}
+            disabled={patientLoading}
             className="w-full pl-4 pr-10 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium
                        text-gray-900 shadow-card focus:outline-none focus:ring-2 focus:ring-clinical-teal/40
-                       focus:border-clinical-teal transition-all duration-200 cursor-pointer"
+                       focus:border-clinical-teal transition-all duration-200 cursor-pointer
+                       disabled:opacity-60 disabled:cursor-wait"
           >
             <option value="">Choose a patient…</option>
-            {dischargePatients.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} — {p.age}y · {p.demo}
-              </option>
-            ))}
+
+            <optgroup label="── Demo Patients ──">
+              {dischargePatientsAll.filter(p => p._isDemo).map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.age}y · {p.demo}
+                </option>
+              ))}
+            </optgroup>
+
+            {dischargePatientsAll.filter(p => !p._isDemo).length > 0 && (
+              <optgroup label="── Live FHIR Patients ──">
+                {dischargePatientsAll.filter(p => !p._isDemo).map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.age}y · {p.demo}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+
+            {patientsLoading && dischargePatientsAll.filter(p => !p._isDemo).length === 0 && (
+              <optgroup label="── Live FHIR Patients ──">
+                <option disabled value="">Loading from FHIR server…</option>
+              </optgroup>
+            )}
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -465,7 +526,16 @@ const DischargeWorkflow = () => {
       )}
 
       {/* Empty state */}
-      {!patient && (
+      {/* FHIR patient loading spinner */}
+      {patientLoading && (
+        <div className="card p-16 text-center animate-fade-in">
+          <Loader2 className="w-10 h-10 animate-spin text-clinical-teal mx-auto mb-4" />
+          <p className="font-semibold text-gray-800">Loading patient from FHIR…</p>
+          <p className="text-sm text-gray-500 mt-1">Fetching conditions, medications, and lab results.</p>
+        </div>
+      )}
+
+      {!patient && !patientLoading && (
         <div className="card p-16 text-center animate-fade-in">
           <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <ClipboardList className="w-8 h-8 text-gray-300" />

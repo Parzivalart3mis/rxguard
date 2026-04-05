@@ -2,7 +2,8 @@
 
 export const dischargePatients = [
   {
-    id: 1,
+    id: 'ddemo-1',
+    _isDemo: true,
     name: "John Miller",
     age: 34,
     sex: "male",
@@ -41,7 +42,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 2,
+    id: 'ddemo-2',
+    _isDemo: true,
     name: "Sarah Chen",
     age: 28,
     sex: "female",
@@ -85,7 +87,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 3,
+    id: 'ddemo-3',
+    _isDemo: true,
     name: "Robert Johnson",
     age: 67,
     sex: "male",
@@ -137,7 +140,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 4,
+    id: 'ddemo-4',
+    _isDemo: true,
     name: "Margaret Thompson",
     age: 74,
     sex: "female",
@@ -181,7 +185,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 5,
+    id: 'ddemo-5',
+    _isDemo: true,
     name: "Michael Brown",
     age: 45,
     sex: "male",
@@ -224,7 +229,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 6,
+    id: 'ddemo-6',
+    _isDemo: true,
     name: "Harold Kim",
     age: 71,
     sex: "male",
@@ -265,7 +271,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 7,
+    id: 'ddemo-7',
+    _isDemo: true,
     name: "James Wilson",
     age: 72,
     sex: "male",
@@ -312,7 +319,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 8,
+    id: 'ddemo-8',
+    _isDemo: true,
     name: "Dorothy Garcia",
     age: 78,
     sex: "female",
@@ -355,7 +363,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 9,
+    id: 'ddemo-9',
+    _isDemo: true,
     name: "David Lee",
     age: 30,
     sex: "male",
@@ -396,7 +405,8 @@ export const dischargePatients = [
   },
   
   {
-    id: 10,
+    id: 'ddemo-10',
+    _isDemo: true,
     name: "Eleanor Patel",
     age: 68,
     sex: "female",

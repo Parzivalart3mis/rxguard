@@ -24,6 +24,7 @@ import aiRouter              from './routes/ai.js';
 import drugsRouter           from './routes/drugs.js';
 import recommendationsRouter from './routes/recommendations.js';
 import antibiogramRouter     from './routes/antibiogram.js';
+import fhirRouter            from './routes/fhir.js';
 import { errorHandler }      from './middleware/errorHandler.js';
 
 const app  = express();
@@ -48,6 +49,7 @@ app.use('/api', aiRouter);
 app.use('/api', drugsRouter);
 app.use('/api', recommendationsRouter);
 app.use('/api', antibiogramRouter);
+app.use('/api', fhirRouter);
 
 // ── health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -59,5 +61,7 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`RxGuard backend listening on http://localhost:${PORT}`);
-  console.log(`  GROQ_API_KEY: ${process.env.GROQ_API_KEY ? 'set ✓' : 'not set (AI fallbacks will be used)'}`);
+  console.log(`  GROQ_API_KEY:   ${process.env.GROQ_API_KEY ? 'set ✓' : 'not set (AI fallbacks will be used)'}`);
+  console.log(`  FHIR_BASE_URL:  ${process.env.FHIR_BASE_URL || 'https://hapi.fhir.org/baseR4 (default)'}`);
+  console.log(`  FHIR_AUTH_TOKEN: ${process.env.FHIR_AUTH_TOKEN ? 'set ✓' : 'not set (unauthenticated)'}`);
 });

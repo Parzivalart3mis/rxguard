@@ -15,20 +15,21 @@
     "sync:rxnorm": "node scripts/ingest/sync-rxnorm-cuis.js"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "express": "^4.21.2",
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0"
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "fhirclient": "^2.6.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
     "@eslint/js": "^9.39.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.27",
+    "concurrently": "^9.1.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",

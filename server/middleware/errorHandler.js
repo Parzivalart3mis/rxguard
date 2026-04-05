@@ -3,7 +3,7 @@
  * Must be registered last in Express (4 arguments).
  */
 
-export const errorHandler = (err, req, res, _next) => {
+export const errorHandler = (err, _req, res, _next) => {
   console.error('[server error]', err);
 
   const status  = err.status || err.statusCode || 500;

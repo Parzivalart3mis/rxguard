@@ -70,11 +70,9 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
 
   // Backend: fetch on patient or selectedAntibiotic change
   useEffect(() => {
-    if (!USE_BACKEND || !patient || !selectedAntibiotic) {
-      if (USE_BACKEND) setRecommendation(null);
-      return;
-    }
+    if (!USE_BACKEND || !patient || !selectedAntibiotic) return;
     const ctrl = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecLoading(true);
     setRecError(null);
     fetch('/api/recommendations', {
@@ -93,7 +91,8 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
     return () => { ctrl.abort(); };
   }, [patient, selectedAntibiotic]);
 
-  const rec = USE_BACKEND ? recommendation : recommendationLocal;
+  // While loading, treat recommendation as null so stale data isn't shown
+  const rec = USE_BACKEND ? (recLoading ? null : recommendation) : recommendationLocal;
 
   // ── Drug-drug interactions ────────────────────────────────────────────────────
   // Backend: returned inside rec.interactions (no separate fetch needed)
@@ -137,7 +136,7 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
       .then((text) => { if (!ignore) setSuboptimalState({ text, forAntibiotic: selectedAntibiotic }); })
       .catch(() =>   { if (!ignore) setSuboptimalState({ text: null, forAntibiotic: selectedAntibiotic }); });
     return () => { ignore = true; };
-  }, [isNotRecommended, rec, patient, selectedAntibiotic]);
+  }, [isNotRecommended, rec, patient, selectedAntibiotic, antibioticMeta]);
 
   const suboptimalText    = suboptimalState.forAntibiotic === selectedAntibiotic ? suboptimalState.text : null;
   const loadingSuboptimal = isNotRecommended && suboptimalState.forAntibiotic !== selectedAntibiotic;
@@ -148,12 +147,23 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
 
   const handlePrescribe = () => {
     if (rec?.recommendation) {
-      onPrescribe({ antibiotic: rec.recommendation.antibiotic, followedRecommendation: true });
+      onPrescribe({
+        antibiotic: rec.recommendation.antibiotic,
+        name: rec.recommendation.name,
+        dose: rec.recommendation.dose,
+        followedRecommendation: true,
+      });
     }
   };
 
   const handleOverride = () => {
-    onOverride({ antibiotic: selectedAntibiotic, recommended: rec?.recommendation?.antibiotic });
+    const meta = antibioticMeta[selectedAntibiotic];
+    onOverride({
+      antibiotic: selectedAntibiotic,
+      name: meta?.name || selectedAntibiotic,
+      dose: meta?.typicalDose || null,
+      recommended: rec?.recommendation?.antibiotic,
+    });
   };
 
   const isRecommended = () => {

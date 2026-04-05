@@ -81,6 +81,14 @@ export const guidelines = {
       typicalPathogens: ["Viral"],
       duration: "N/A",
       notes: "Antibiotics NOT recommended. Supportive care only."
+    },
+    general_infection: {
+      name: "Infection (condition-specific algorithm unavailable)",
+      firstLine: ["amoxicillin_clav"],
+      alternatives: ["doxycycline", "azithromycin", "ciprofloxacin"],
+      typicalPathogens: ["S. aureus", "S. pneumoniae", "E. coli", "H. influenzae"],
+      duration: "5-7 days (adjust based on clinical response)",
+      notes: "No specific algorithm matched this condition. Empiric broad-spectrum options shown — tailor therapy once culture and sensitivity results are available. Clinical judgment is essential."
     }
   },
 
