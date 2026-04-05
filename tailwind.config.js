@@ -32,10 +32,15 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(-8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        slideIn: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out both',
         'slide-down': 'slideDown 0.2s ease-out both',
+        'slide-in': 'slideIn 0.3s ease-in-out',
       },
       boxShadow: {
         card: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',

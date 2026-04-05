@@ -1,77 +1,61 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 /**
  * Global patient context — shared across Dashboard, Prescribe, Discharge.
  *
  * Stores two levels of patient state:
- *   prescriberPatient   — full prescriber-schema patient (from usePatients)
- *   dischargePatientId  — the currently selected discharge-schema patient id
- *   activeDisplay       — lightweight { name, age, id, gender } shown in sidebar/navbar
+ *   activePatient         — full schema patient
+ *   activeDisplay         — lightweight { name, age, id, gender } shown in sidebar/navbar
  *   acceptedPrescriptions — { [patientName]: { antibiotic, name, dose, date } }
  */
 
 const PatientContext = createContext(null);
 
 export const PatientProvider = ({ children }) => {
-  const [prescriberPatient, setPrescriberPatient]       = useState(null);
-  const [dischargePatientId, setDischargePatientId]     = useState('');
-  const [activeDisplay, setActiveDisplay]               = useState(null);
+  const [activePatient, setActivePatient] = useState(null);
   const [acceptedPrescriptions, setAcceptedPrescriptions] = useState({});
 
-  const selectPrescriberPatient = useCallback((patient) => {
-    setPrescriberPatient(patient);
-    if (patient) {
-      setActiveDisplay({
-        name:   patient.name,
-        age:    patient.age,
-        id:     patient.id,
-        gender: patient.gender,
-      });
-    } else {
-      setActiveDisplay(null);
-    }
+  const selectPatient = useCallback((patient) => {
+    setActivePatient(patient);
   }, []);
 
-  const selectDischargePatient = useCallback((patient) => {
-    if (patient) {
-      setDischargePatientId(patient.id);
-      setActiveDisplay({
-        name:   patient.name,
-        age:    patient.age,
-        id:     patient.id,
-        gender: patient.sex || patient.gender,
-      });
-    } else {
-      setDischargePatientId('');
-    }
-  }, []);
+  const activeDisplay = useMemo(() => {
+    if (!activePatient) return null;
+    return {
+      name: activePatient.name,
+      age: activePatient.age,
+      id: activePatient.id,
+      gender: activePatient.sex || activePatient.gender,
+    };
+  }, [activePatient]);
 
   const recordPrescription = useCallback((patientName, data) => {
     setAcceptedPrescriptions(prev => ({
       ...prev,
       [patientName]: {
         antibiotic: data.antibiotic,
-        name:       data.name || data.antibiotic,
-        dose:       data.dose || 'as prescribed',
-        date:       new Date().toISOString().split('T')[0],
+        name: data.name || data.antibiotic,
+        dose: data.dose || 'as prescribed',
+        date: new Date().toISOString().split('T')[0],
       },
     }));
   }, []);
 
   const clearPatient = useCallback(() => {
-    setPrescriberPatient(null);
-    setDischargePatientId('');
-    setActiveDisplay(null);
+    setActivePatient(null);
   }, []);
 
   return (
     <PatientContext.Provider value={{
-      prescriberPatient,
-      dischargePatientId,
+      activePatient,
+      // Alias for backwards compatibility where prescriberPatient is used
+      prescriberPatient: activePatient, 
       activeDisplay,
       acceptedPrescriptions,
-      selectPrescriberPatient,
-      selectDischargePatient,
+      selectPatient,
+      // Alias for backwards compatibility
+      selectPrescriberPatient: selectPatient,
+      selectDischargePatient: selectPatient,
       recordPrescription,
       clearPatient,
     }}>

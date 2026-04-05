@@ -1,8 +1,8 @@
-# RxGuard — Antibiotic Stewardship AI
+# AegisRx — Safer Prescribing, Smarter Care
 
-RxGuard is a clinical decision-support tool that helps physicians make safer, evidence-based antibiotic prescribing decisions. It combines rule-based clinical scoring, a local antibiogram, and AI-generated reasoning to reduce inappropriate antibiotic use and prevent medication harm at the point of care and at discharge.
+AegisRx is a clinical decision-support tool that helps physicians make safer, evidence-based antibiotic prescribing decisions. It combines rule-based clinical scoring, a local antibiogram, and AI-generated reasoning to reduce inappropriate antibiotic use and prevent medication harm at the point of care and at discharge.
 
-> **Disclaimer:** RxGuard is for educational and demonstration purposes only. All patient data is synthetic. It does not replace clinical judgment and must not be used in actual clinical care.
+> **Disclaimer:** AegisRx is for educational and demonstration purposes only. All patient data is synthetic. It does not replace clinical judgment and must not be used in actual clinical care.
 
 ---
 
@@ -85,7 +85,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Features
 
-RxGuard has three main tabs: **Prescribe**, **Discharge**, and **Dashboard**.
+AegisRx has three main tabs: **Prescribe**, **Discharge**, and **Dashboard**.
 
 ---
 
@@ -356,7 +356,7 @@ All AI features use `llama-3.1-8b-instant` via the Groq API. Every AI call has a
 
 ## FHIR R4 Integration
 
-When `VITE_USE_BACKEND=true`, the backend exposes a FHIR proxy that can pull real patient data from any FHIR R4 server and map it into RxGuard's internal schema.
+When `VITE_USE_BACKEND=true`, the backend exposes a FHIR proxy that can pull real patient data from any FHIR R4 server and map it into AegisRx's internal schema.
 
 ### How it works
 
@@ -410,7 +410,7 @@ The Express server (`server/index.js`) runs on port 3001 and is proxied by Vite 
 
 ## Database
 
-RxGuard uses a local SQLite file (`rxguard.db`) via `better-sqlite3`.
+AegisRx uses a local SQLite file (`rxguard.db`) via `better-sqlite3`.
 
 | Table | Contents |
 |---|---|
@@ -442,7 +442,7 @@ npm run sync:rxnorm
 ## Project Structure
 
 ```
-rxguard-master/
+AegisRx-master/
 ├── src/
 │   ├── components/
 │   │   ├── Navbar.jsx                     # Navigation — Prescribe / Discharge / Dashboard
@@ -497,7 +497,7 @@ rxguard-master/
 │   │   └── fhir.js                        # GET /api/fhir/* (FHIR R4 proxy)
 │   ├── services/
 │   │   ├── fhirFetcher.js                 # Fetches FHIR R4 resources
-│   │   └── fhirMapper.js                  # Maps FHIR → RxGuard schema
+│   │   └── fhirMapper.js                  # Maps FHIR → AegisRx schema
 │   ├── middleware/
 │   │   └── errorHandler.js                # Centralised error handling
 │   └── db/

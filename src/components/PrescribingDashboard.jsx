@@ -1,38 +1,45 @@
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, ResponsiveContainer, Tooltip, Legend
+  XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, Legend
 } from 'recharts';
 import { getDashboardStats } from '../data/prescribingHistory.js';
+import PatientSelector from './PatientSelector.jsx';
 import {
   TrendingUp, TrendingDown, Minus, Pill, AlertTriangle, CheckCircle,
-  FlaskConical, ClipboardList, Activity, ArrowRight, UserCircle, Stethoscope
+  Activity, ArrowRight
 } from 'lucide-react';
 import { usePatientContext } from '../contexts/PatientContext.jsx';
 
-const CHART_COLORS = ['#16a34a', '#eab308', '#f97316', '#dc2626', '#8b5cf6'];
-
-const TooltipStyle = {
-  backgroundColor: '#1e293b',
-  border: '1px solid rgba(255,255,255,0.07)',
-  borderRadius: '10px',
-  color: '#f1f5f9',
-  fontSize: '12px',
-  padding: '8px 12px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+// Custom tooltip renderer to use CSS variables for theme support
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 rounded-lg shadow-lg">
+        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 mb-1">{label}</p>
+        {payload.map((entry, index) => (
+          <div key={`item-${index}`} className="flex items-center gap-2 text-xs">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+            <span className="text-slate-600 dark:text-slate-300">{entry.name}:</span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{entry.value}{entry.name.includes('%') || entry.dataKey === 'adherence' || entry.dataKey === 'narrowSpectrum' ? '%' : ''}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
 };
 
-/* ── Stat card ─────────────────────────────────────────── */
 const StatCard = ({ icon, value, label, sub, subColor, SubIcon }) => (
   <div className="card p-5">
     <div className="flex items-start justify-between mb-3">
-      <div className="w-9 h-9 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center justify-center">
+      <div className="w-9 h-9 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center justify-center border border-gray-100 dark:border-gray-700">
         {icon}
       </div>
     </div>
     <p className="text-[26px] font-bold text-gray-900 dark:text-gray-50 tabular-nums leading-none tracking-tight">
       {value}
     </p>
-    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 leading-tight">{label}</p>
+    <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mt-1.5 leading-tight">{label}</p>
     {sub && (
       <div className={`flex items-center gap-1 mt-2 text-xs font-semibold ${subColor}`}>
         {SubIcon && <SubIcon className="w-3 h-3" />}
@@ -42,175 +49,114 @@ const StatCard = ({ icon, value, label, sub, subColor, SubIcon }) => (
   </div>
 );
 
-/* ── CTA card ───────────────────────────────────────────── */
-const CtaCard = ({ icon: Icon, title, sub, onClick, variant = 'primary' }) => (
-  <button
-    onClick={onClick}
-    className={`w-full text-left rounded-2xl p-4 border transition-all duration-150 hover:shadow-md active:scale-[0.99] group ${
-      variant === 'primary'
-        ? 'bg-clinical-teal border-clinical-teal text-white shadow-sm'
-        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-clinical-teal/40'
-    }`}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-          variant === 'primary'
-            ? 'bg-white/20'
-            : 'bg-clinical-teal/10 dark:bg-clinical-teal/20'
-        }`}>
-          <Icon className={`w-4.5 h-4.5 ${variant === 'primary' ? 'text-white' : 'text-clinical-teal'}`}
-            style={{ width: '1.125rem', height: '1.125rem' }} />
-        </div>
-        <div>
-          <p className={`text-sm font-bold leading-tight ${
-            variant === 'primary' ? 'text-white' : 'text-gray-900 dark:text-gray-100'
-          }`}>{title}</p>
-          <p className={`text-xs mt-0.5 ${
-            variant === 'primary' ? 'text-white/70' : 'text-gray-500 dark:text-gray-400'
-          }`}>{sub}</p>
-        </div>
-      </div>
-      <ArrowRight className={`w-4 h-4 transition-transform group-hover:translate-x-0.5 ${
-        variant === 'primary' ? 'text-white/60' : 'text-gray-400 dark:text-gray-500'
-      }`} />
-    </div>
-  </button>
-);
-
-/* ── Main component ────────────────────────────────────── */
-const PrescribingDashboard = ({ onNavigate }) => {
-  const { activeDisplay, acceptedPrescriptions } = usePatientContext();
-  const stats   = getDashboardStats();
+const PrescribingDashboard = ({ onNavigate, patients, loading, onSelectPatient }) => {
+  const { activePatient } = usePatientContext();
+  const stats = getDashboardStats();
   const current = stats.last30Days || {
-    total: 0,
-    narrowSpectrum: { percentage: 0 },
-    broadSpectrum: { percentage: 0 },
-    viralInfectionsWithAntibiotics: { percentage: 0 },
-    adherenceRate: 0,
-    topAntibiotics: [],
+    total: 0, narrowSpectrum: { percentage: 0 }, broadSpectrum: { percentage: 0 },
+    viralInfectionsWithAntibiotics: { percentage: 0, count: 0 }, adherenceRate: 0, topAntibiotics: [],
   };
   const facility = stats.facilityAverage;
 
   const getComparison = (user, avg) => {
     const diff = user - avg;
     if (diff < -5) return { Icon: TrendingDown, color: 'text-green-600 dark:text-green-400', text: 'Better than avg' };
-    if (diff > 5)  return { Icon: TrendingUp,   color: 'text-red-600 dark:text-red-400',    text: 'Above avg' };
-    return           { Icon: Minus,         color: 'text-yellow-600 dark:text-yellow-400', text: 'On par with avg' };
+    if (diff > 5) return { Icon: TrendingUp, color: 'text-red-600 dark:text-red-400', text: 'Above avg' };
+    return { Icon: Minus, color: 'text-amber-600 dark:text-amber-400', text: 'On par with avg' };
   };
 
-  const narrowCmp    = getComparison(100 - (current.narrowSpectrum?.percentage || 0), 100 - facility.narrowSpectrum);
+  const narrowCmp = getComparison(100 - (current.narrowSpectrum?.percentage || 0), 100 - facility.narrowSpectrum);
   const adherenceCmp = getComparison(current.adherenceRate || 0, facility.adherenceRate);
 
-  const prescription = activeDisplay ? acceptedPrescriptions[activeDisplay.name] : null;
-
   return (
-    <div className="min-h-full">
+    <div className="min-h-full flex flex-col pb-8">
+      {/* ── Hero Banner ── */}
+      <div className="bg-gradient-to-br from-slate-900 to-clinical-navy dark:from-gray-950 dark:to-gray-900 text-white px-6 py-8 sm:py-10 border-b border-gray-800 shadow-sm relative overflow-hidden">
+        {/* Decorative background elements */}
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-clinical-teal/10 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-20 w-40 h-40 rounded-full bg-blue-500/10 blur-2xl pointer-events-none" />
+        
+        <div className="relative max-w-7xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-clinical-teal/20 text-clinical-teal uppercase tracking-widest border border-clinical-teal/30">
+                AegisRx
+              </span>
+              <span className="text-gray-400 text-xs font-medium">Antibiotic Stewardship Program</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
+              Welcome back, Dr. Martinez
+            </h1>
+            <p className="text-slate-300 text-sm max-w-lg leading-relaxed">
+              Your overall adherence to institutional prescribing guidelines is {current.adherenceRate}%. 
+              Let's maintain this standard of care.
+            </p>
+          </div>
 
-      {/* ── Hero banner ──────────────────────────────────────── */}
-      <div className="bg-clinical-navy dark:bg-gray-950 border-b border-white/5">
-        <div className="px-6 py-8">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-8">
-
-            {/* Left — brand + value prop */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold text-clinical-teal uppercase tracking-widest">Clinical Decision Support</span>
+          {/* Quick patient start */}
+          <div className="w-full md:w-80 bg-white/5 backdrop-blur-sm border border-white/10 p-3.5 rounded-xl shadow-lg">
+            <label className="block text-xs font-medium text-slate-300 mb-2">Start a new workflow</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                {/* Custom styling applied via props down to PatientSelector isn't trivial without rewriting PatientSelector, 
+                    so we will just pass it, the styles will adapt based on the wrapping container. */}
+                <PatientSelector 
+                  patients={patients}
+                  selectedPatient={activePatient}
+                  loading={loading}
+                  onSelect={(p) => {
+                    onSelectPatient(p);
+                    if (p) onNavigate('prescribe');
+                  }}
+                />
               </div>
-              <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">
-                Safer Prescribing.<br className="hidden sm:block" /> Smarter Care.
-              </h1>
-              <p className="text-white/55 text-sm mt-2.5 max-w-md leading-relaxed">
-                Real-time antibiotic stewardship, ADE detection, prescribing cascade analysis,
-                and IDSA guideline concordance — all in one platform.
+            </div>
+            {!activePatient && (
+              <p className="text-[10px] text-slate-400 mt-2 text-right">
+                Select to jump to Prescribe →
               </p>
-
-              {/* Active patient inline */}
-              {activeDisplay ? (
-                <div className="mt-4 flex items-center gap-3 bg-white/8 border border-white/12 rounded-xl px-3.5 py-2.5 w-fit">
-                  <div className="w-7 h-7 bg-clinical-teal rounded-lg flex items-center justify-center flex-shrink-0">
-                    <UserCircle className="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-white text-sm font-semibold leading-tight">{activeDisplay.name}</p>
-                    <p className="text-white/45 text-[10px]">
-                      {activeDisplay.age}y · Active patient
-                      {prescription ? ` · Rx: ${prescription.name}` : ''}
-                    </p>
-                  </div>
-                  {prescription && (
-                    <button
-                      onClick={() => onNavigate('discharge')}
-                      className="ml-2 flex items-center gap-1.5 text-xs font-semibold text-clinical-teal hover:text-white transition-colors"
-                    >
-                      Safety review <ArrowRight className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 w-fit">
-                  <Stethoscope className="w-4 h-4 text-white/30" />
-                  <p className="text-white/40 text-xs">No patient selected — go to Prescribe or Discharge to begin</p>
-                </div>
-              )}
-            </div>
-
-            {/* Right — quick action cards */}
-            <div className="flex flex-col gap-2.5 lg:w-72 flex-shrink-0">
-              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Quick Actions</p>
-              <CtaCard
-                icon={FlaskConical}
-                title="Antibiotic Stewardship"
-                sub="Guideline-concordant prescribing"
-                onClick={() => onNavigate('prescribe')}
-                variant="primary"
-              />
-              <CtaCard
-                icon={ClipboardList}
-                title="Discharge Safety Review"
-                sub="ADE, cascade & interaction checks"
-                onClick={() => onNavigate('discharge')}
-                variant="secondary"
-              />
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Analytics body ───────────────────────────────────── */}
-      <div className="px-6 py-7 space-y-7">
-
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 tracking-tight">Prescribing Analytics</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Antibiotic stewardship metrics — last 30 days</p>
+      {/* ── Analytics Overview ── */}
+      <div className="page-wrapper flex-1 w-full !pt-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-clinical-teal" /> 
+            30-Day Prescribing Overview
+          </h2>
+          <span className="text-xs font-semibold px-2 py-1 bg-gray-100 dark:bg-gray-800 text-slate-500 dark:text-slate-400 rounded-md border border-gray-200 dark:border-gray-700">
+            Facility: City General
+          </span>
         </div>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard
-            icon={<Pill className="w-4.5 h-4.5 text-clinical-teal" style={{ width: '1.125rem', height: '1.125rem' }} />}
+            icon={<Pill className="w-4 h-4 text-clinical-teal" />}
             value={current.total}
             label="Total prescriptions"
             sub="Last 30 days"
-            subColor="text-gray-400 dark:text-gray-500"
+            subColor="text-slate-500"
           />
           <StatCard
-            icon={<CheckCircle className="w-4.5 h-4.5 text-green-500" style={{ width: '1.125rem', height: '1.125rem' }} />}
+            icon={<CheckCircle className="w-4 h-4 text-green-500" />}
             value={`${current.narrowSpectrum?.percentage || 0}%`}
-            label="Narrow-spectrum rate"
+            label="Narrow-spectrum"
             sub={narrowCmp.text}
             subColor={narrowCmp.color}
             SubIcon={narrowCmp.Icon}
           />
           <StatCard
-            icon={<AlertTriangle className="w-4.5 h-4.5 text-orange-500" style={{ width: '1.125rem', height: '1.125rem' }} />}
+            icon={<AlertTriangle className="w-4 h-4 text-orange-500" />}
             value={`${current.broadSpectrum?.percentage || 0}%`}
-            label="Broad-spectrum rate"
+            label="Broad-spectrum"
             sub={`Facility avg: ${facility.broadSpectrum}%`}
-            subColor="text-gray-400 dark:text-gray-500"
+            subColor="text-slate-500"
           />
           <StatCard
-            icon={<Activity className="w-4.5 h-4.5 text-clinical-teal" style={{ width: '1.125rem', height: '1.125rem' }} />}
+            icon={<Activity className="w-4 h-4 text-clinical-teal" />}
             value={`${current.adherenceRate || 0}%`}
             label="Guideline adherence"
             sub={adherenceCmp.text}
@@ -219,35 +165,33 @@ const PrescribingDashboard = ({ onNavigate }) => {
           />
         </div>
 
-        {/* Charts row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Spectrum distribution */}
           <div className="card p-5">
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Spectrum Distribution</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-4">Prescriptions by spectrum class</p>
-            <div className="h-52">
+            <h3 className="section-title mb-4">Spectrum Distribution</h3>
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={[
-                      { name: 'Narrow', value: current.narrowSpectrum?.count  || 0 },
-                      { name: 'Medium', value: current.mediumSpectrum?.count  || 0 },
-                      { name: 'Broad',  value: current.broadSpectrum?.count   || 0 },
+                      { name: 'Narrow', value: current.narrowSpectrum?.count || 0 },
+                      { name: 'Medium', value: current.mediumSpectrum?.count || 0 },
+                      { name: 'Broad', value: current.broadSpectrum?.count || 0 },
                     ]}
                     cx="50%" cy="50%"
-                    innerRadius={52} outerRadius={76}
-                    paddingAngle={4}
+                    innerRadius={55} outerRadius={80}
+                    paddingAngle={3}
                     dataKey="value"
+                    stroke="none"
                   >
                     <Cell fill="#16a34a" />
                     <Cell fill="#eab308" />
                     <Cell fill="#f97316" />
                   </Pie>
-                  <Tooltip contentStyle={TooltipStyle} />
+                  <RechartsTooltip content={<CustomTooltip />} />
                   <Legend
-                    iconType="circle" iconSize={7}
-                    formatter={(v) => <span className="text-xs text-gray-600 dark:text-gray-400">{v}</span>}
+                    iconType="circle" iconSize={8}
+                    formatter={(v) => <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">{v}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -256,19 +200,22 @@ const PrescribingDashboard = ({ onNavigate }) => {
 
           {/* Top antibiotics */}
           <div className="card p-5">
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Top 5 Antibiotics Prescribed</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-4">Count by antibiotic name</p>
-            <div className="h-52">
+            <h3 className="section-title mb-4">Top 5 Antibiotics</h3>
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={current.topAntibiotics || []}
                   layout="vertical"
-                  margin={{ left: 0, right: 12, top: 0, bottom: 0 }}
+                  margin={{ left: 0, right: 15, top: 0, bottom: 0 }}
                 >
-                  <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="name" type="category" width={108} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={TooltipStyle} />
-                  <Bar dataKey="count" fill="#0d7377" radius={[0, 5, 5, 0]} barSize={14} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500" axisLine={false} tickLine={false} />
+                  <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-600 dark:text-slate-400 font-medium" axisLine={false} tickLine={false} />
+                  <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(13, 115, 119, 0.05)' }} />
+                  <Bar dataKey="count" fill="#0d7377" radius={[0, 4, 4, 0]} barSize={16}>
+                    {current.topAntibiotics?.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === 0 ? '#0d7377' : '#0d737799'} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -276,37 +223,38 @@ const PrescribingDashboard = ({ onNavigate }) => {
         </div>
 
         {/* Monthly trend */}
-        <div className="card p-5">
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Monthly Trends</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-4">
-            Guideline adherence &amp; narrow-spectrum rate over time
-          </p>
-          <div className="h-44">
+        <div className="card p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title">Monthly Prescribing Trends</h3>
+            <span className="text-xs text-slate-500">6 month history</span>
+          </div>
+          <div className="h-56 mt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={stats.trend} margin={{ left: 0, right: 12, top: 4, bottom: 0 }}>
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <LineChart data={stats.trend} margin={{ left: -20, right: 10, top: 5, bottom: 0 }}>
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500" axisLine={false} tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500"
                   axisLine={false} tickLine={false}
                   domain={[0, 100]}
                   tickFormatter={(v) => `${v}%`}
                 />
-                <Tooltip contentStyle={TooltipStyle} formatter={(v) => `${v}%`} />
+                <RechartsTooltip content={<CustomTooltip />} />
                 <Legend
-                  iconType="circle" iconSize={7}
-                  formatter={(v) => <span className="text-xs text-gray-600 dark:text-gray-400">{v}</span>}
+                  iconType="circle" iconSize={8}
+                  formatter={(v) => <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">{v}</span>}
+                  wrapperStyle={{ paddingTop: '10px' }}
                 />
                 <Line
                   type="monotone" dataKey="adherence" name="Guideline Adherence"
-                  stroke="#0d7377" strokeWidth={2}
-                  dot={{ r: 3, fill: '#0d7377', strokeWidth: 0 }}
-                  activeDot={{ r: 5 }}
+                  stroke="#0d7377" strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#0d7377', strokeWidth: 0 }}
+                  activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
                 />
                 <Line
                   type="monotone" dataKey="narrowSpectrum" name="Narrow Spectrum %"
-                  stroke="#16a34a" strokeWidth={2}
-                  dot={{ r: 3, fill: '#16a34a', strokeWidth: 0 }}
-                  activeDot={{ r: 5 }}
+                  stroke="#16a34a" strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#16a34a', strokeWidth: 0 }}
+                  activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -315,28 +263,25 @@ const PrescribingDashboard = ({ onNavigate }) => {
 
         {/* Viral prescribing alert */}
         {(current.viralInfectionsWithAntibiotics?.count || 0) > 0 && (
-          <div className="card border-l-4 border-amber-400 p-5">
-            <div className="flex items-start gap-3.5">
-              <div className="w-9 h-9 bg-amber-50 dark:bg-amber-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-4.5 h-4.5 text-amber-600 dark:text-amber-400" style={{ width: '1.125rem', height: '1.125rem' }} />
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-xl p-5 mb-8 animate-fade-in shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500" />
               </div>
               <div>
-                <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-                  Viral Infection Prescribing Alert
+                <p className="font-bold text-amber-900 dark:text-amber-300 text-sm">
+                  Practice Variation Detected
                 </p>
-                <p className="text-sm text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
+                <p className="text-sm text-amber-800 dark:text-amber-400/90 mt-1 leading-relaxed">
                   {current.viralInfectionsWithAntibiotics?.count || 0} prescriptions
-                  ({current.viralInfectionsWithAntibiotics?.percentage || 0}%) were for likely
-                  viral infections in the last 30 days. Consider watchful waiting for low bacterial
-                  probability cases.
+                  ({current.viralInfectionsWithAntibiotics?.percentage || 0}%) were written for likely
+                  viral respiratory tract infections in the last 30 days. Recommend watchful waiting or delayed prescribing for low bacterial
+                  probability patients.
                 </p>
               </div>
             </div>
           </div>
         )}
-
-        {/* Footer spacer */}
-        <div className="h-4" />
       </div>
     </div>
   );

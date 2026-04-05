@@ -5,8 +5,8 @@ const PatientSelector = ({ patients, selectedPatient, onSelect, loading = false 
   const fhirPatients = patients.filter(p => !p._isDemo);
 
   const formatOption = (patient) => {
-    const age      = patient.age    ? ` · ${patient.age}y`                                     : '';
-    const gender   = patient.gender ? ` ${patient.gender === 'male' ? 'M' : 'F'}`              : '';
+    const age = patient.age ? ` · ${patient.age}y` : '';
+    const gender = patient.gender ? ` ${patient.gender === 'male' ? 'M' : 'F'}` : '';
     const scenario = patient.scenario && patient.scenario !== 'Loading...'
       ? ` — ${patient.scenario}` : '';
     return `${patient.name}${age}${gender}${scenario}`;
@@ -15,9 +15,9 @@ const PatientSelector = ({ patients, selectedPatient, onSelect, loading = false 
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Patient</label>
+        <label className="text-sm font-semibold text-gray-900 dark:text-gray-100">Select Patient</label>
         {loading && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
             <Loader2 className="w-3 h-3 animate-spin" /> Loading FHIR…
           </span>
         )}
@@ -26,7 +26,7 @@ const PatientSelector = ({ patients, selectedPatient, onSelect, loading = false 
       <div className="relative">
         {loading
           ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin pointer-events-none" />
-          : <Search  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         }
         <select
           value={selectedPatient?.id || ''}

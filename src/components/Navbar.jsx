@@ -31,7 +31,7 @@ const Navbar = ({ pageTitle, pageSub, onMenuClick }) => {
                 {pageTitle}
               </h1>
               {pageSub && (
-                <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline truncate">
+                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline truncate">
                   {pageSub}
                 </span>
               )}

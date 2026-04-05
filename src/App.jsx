@@ -13,15 +13,17 @@ import ResistanceCostVisualizer from './components/ResistanceCostVisualizer.jsx'
 import PrescribingDashboard from './components/PrescribingDashboard.jsx';
 import OverrideModal from './components/OverrideModal.jsx';
 import DischargeWorkflow from './components/DischargeWorkflow.jsx';
+import PageHeader from './components/PageHeader.jsx';
+import { FlaskConical } from 'lucide-react';
 
 import { usePatients } from './hooks/usePatients.js';
 import { calculateBacterialProbability } from './services/scoringEngine.js';
 import { usePatientContext } from './contexts/PatientContext.jsx';
 
 const PAGE_META = {
-  dashboard: { title: 'Dashboard',             sub: 'Overview & analytics' },
-  prescribe:  { title: 'Antibiotic Stewardship', sub: 'Evidence-based prescribing guidance' },
-  discharge:  { title: 'Discharge Safety Review', sub: 'Medication safety check before discharge' },
+  dashboard: { title: 'Dashboard', sub: 'Overview & analytics' },
+  prescribe: { title: 'Antibiotic Stewardship', sub: 'Evidence-based prescribing guidance' },
+  discharge: { title: 'Discharge Safety Review', sub: 'Medication safety check before discharge' },
 };
 
 function App() {
@@ -34,10 +36,9 @@ function App() {
   const [notification, setNotification] = useState(null);
   const [antibiogramData, setAntibiogramData] = useState(null);
 
-  // Global patient context
   const {
-    prescriberPatient,
-    selectPrescriberPatient,
+    activePatient,
+    selectPatient,
     acceptedPrescriptions,
     recordPrescription,
   } = usePatientContext();
@@ -51,9 +52,9 @@ function App() {
   }, []);
 
   const scoreResult = useMemo(() => {
-    if (prescriberPatient) return calculateBacterialProbability(prescriberPatient);
+    if (activePatient) return calculateBacterialProbability(activePatient);
     return null;
-  }, [prescriberPatient]);
+  }, [activePatient]);
 
   const showNotification = (type, message) => {
     setNotification({ type, message });
@@ -61,7 +62,7 @@ function App() {
   };
 
   const handlePrescribe = (data) => {
-    if (prescriberPatient) recordPrescription(prescriberPatient.name, data);
+    if (activePatient) recordPrescription(activePatient.name, data);
     showNotification('success', `Prescription for ${data.name || data.antibiotic} recorded. Guideline-concordant prescribing noted.`);
   };
 
@@ -73,23 +74,23 @@ function App() {
 
   const handleOverrideConfirm = (reasonData) => {
     setShowOverrideModal(false);
-    if (prescriberPatient && overrideData) recordPrescription(prescriberPatient.name, overrideData);
+    if (activePatient && overrideData) recordPrescription(activePatient.name, overrideData);
     showNotification('warning', `Override recorded: ${overrideData?.name || overrideData?.antibiotic} prescribed. Reason: ${reasonData.reason}`);
     setOverrideData(null);
   };
 
   const handleSelectPatient = async (patient) => {
-    if (!patient) { selectPrescriberPatient(null); return; }
-    selectPrescriberPatient(patient);
+    if (!patient) { selectPatient(null); return; }
+    selectPatient(patient);
     const full = await getPatient(patient.id);
-    if (full) selectPrescriberPatient(full);
+    if (full) selectPatient(full);
   };
 
   const getConditionFromScore = () => scoreResult?.condition || '';
-  const prescription = prescriberPatient ? acceptedPrescriptions[prescriberPatient.name] : null;
+  const prescription = activePatient ? acceptedPrescriptions[activePatient.name] : null;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-[#09111f] overflow-hidden">
 
       {/* ── Top Navbar ── */}
       <Navbar
@@ -110,21 +111,19 @@ function App() {
         />
 
         {/* ── Main scrollable area ── */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
 
           {/* Notification banner */}
           {notification && (
-            <div className={`flex-shrink-0 px-6 py-2.5 border-b animate-slide-down flex items-center gap-2.5 ${
-              notification.type === 'success'
+            <div className={`absolute top-0 left-0 right-0 z-10 flex-shrink-0 px-6 py-2.5 border-b animate-slide-down flex items-center gap-2.5 ${notification.type === 'success'
                 ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800'
                 : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
-            }`}>
+              }`}>
               {notification.type === 'success'
                 ? <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 : <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />}
-              <p className={`text-sm font-medium ${
-                notification.type === 'success' ? 'text-green-800 dark:text-green-300' : 'text-amber-800 dark:text-amber-300'
-              }`}>
+              <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800 dark:text-green-300' : 'text-amber-800 dark:text-amber-300'
+                }`}>
                 {notification.message}
               </p>
             </div>
@@ -135,43 +134,51 @@ function App() {
 
             {/* ── DASHBOARD ── */}
             {activeTab === 'dashboard' && (
-              <PrescribingDashboard onNavigate={setActiveTab} />
+              <PrescribingDashboard 
+                onNavigate={setActiveTab} 
+                patients={patients}
+                loading={patientsLoading}
+                onSelectPatient={handleSelectPatient}
+              />
             )}
 
             {/* ── PRESCRIBE ── */}
             {activeTab === 'prescribe' && (
-              <div className="px-6 py-7">
-                {/* Patient selector row */}
-                <div className="flex items-end justify-between gap-4 flex-wrap mb-7">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50 tracking-tight">
-                      Antibiotic Stewardship
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      Select a patient then choose an antibiotic to receive guideline-based guidance.
-                    </p>
-                  </div>
-                  <div className="w-full sm:w-80 flex-shrink-0">
-                    <PatientSelector
-                      patients={patients}
-                      selectedPatient={prescriberPatient}
-                      loading={patientsLoading}
-                      onSelect={handleSelectPatient}
-                    />
-                  </div>
-                </div>
+              <div className="page-wrapper animate-fade-in" key="prescribe-tab">
+                
+                <PageHeader 
+                  icon={FlaskConical} 
+                  title="Antibiotic Stewardship" 
+                  subtitle="Select a patient then choose an antibiotic to receive guideline-based guidance."
+                />
 
-                {/* Prescribe grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  <div className="lg:col-span-4">
-                    <PatientContextCard patient={prescriberPatient} />
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4">
+                  
+                  {/* Left column: Context & selection */}
+                  <div className="lg:col-span-4 space-y-6">
+                    {!activePatient && (
+                      <div className="card p-5 animate-fade-in">
+                        <label className="section-title mb-3 block">Select a Patient</label>
+                        <PatientSelector
+                          patients={patients}
+                          selectedPatient={activePatient}
+                          loading={patientsLoading}
+                          onSelect={handleSelectPatient}
+                        />
+                      </div>
+                    )}
+                    {activePatient && (
+                      <PatientContextCard patient={activePatient} />
+                    )}
                   </div>
+
+                  {/* Right column: Action */}
                   <div className="lg:col-span-8 space-y-6">
-                    {prescriberPatient ? (
+                    {activePatient ? (
                       <>
-                        <BacterialProbabilityGauge scoreResult={scoreResult} patient={prescriberPatient} />
+                        <BacterialProbabilityGauge scoreResult={scoreResult} patient={activePatient} />
                         <AntibioticRecommender
-                          patient={prescriberPatient}
+                          patient={activePatient}
                           antibiogramData={antibiogramData}
                           onPrescribe={handlePrescribe}
                           onOverride={handleOverrideRequest}
@@ -182,14 +189,14 @@ function App() {
                           antibiogramData={antibiogramData}
                         />
 
-                        {/* Continue to Discharge CTA (shows after Rx accepted) */}
+                        {/* Continue to Discharge CTA */}
                         {prescription && (
-                          <div className="card p-5 border-l-4 border-clinical-teal flex items-center justify-between gap-4 animate-fade-in">
+                          <div className="card p-5 border-l-4 border-clinical-teal flex items-center justify-between gap-4 animate-fade-in shadow-sm">
                             <div>
                               <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                                 Prescription recorded
                               </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                 {prescription.name} · {prescription.dose} — ready for discharge safety review
                               </p>
                             </div>
@@ -203,16 +210,15 @@ function App() {
                         )}
                       </>
                     ) : (
-                      <div className="card p-14 text-center animate-fade-in">
-                        <div className="w-16 h-16 bg-clinical-teal/10 dark:bg-clinical-teal/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                      <div className="card p-14 text-center animate-fade-in border-dashed border-2">
+                        <div className="w-16 h-16 bg-clinical-teal/10 dark:bg-clinical-teal/20 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-clinical-teal/10">
                           <AlertCircle className="w-8 h-8 text-clinical-teal" />
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                          Select a patient to begin
+                          No active patient context
                         </h3>
-                        <p className="text-gray-500 dark:text-gray-400 max-w-sm mx-auto text-sm leading-relaxed">
-                          Choose a patient from the selector above to view their clinical context
-                          and receive antibiotic stewardship guidance.
+                        <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto text-sm leading-relaxed">
+                          Please select a patient from the dropdown on the left or via the dashboard to begin prescribing.
                         </p>
                       </div>
                     )}
@@ -223,7 +229,9 @@ function App() {
 
             {/* ── DISCHARGE ── */}
             {activeTab === 'discharge' && (
-              <DischargeWorkflow acceptedPrescriptions={acceptedPrescriptions} />
+              <div key="discharge-tab">
+                <DischargeWorkflow onNavigate={setActiveTab} />
+              </div>
             )}
 
           </div>
