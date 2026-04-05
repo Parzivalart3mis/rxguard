@@ -34,22 +34,22 @@ const SafetyAlertPanel = ({ alerts, onResolve, resolvedAlerts = [] }) => {
       action: 'text-orange-600 dark:text-orange-400',
     },
     moderate: {
-      bar:    'border-l-4 border-yellow-500',
+      bar:    'border-l-4 border-orange-400',
+      bg:     'bg-orange-50 dark:bg-orange-950/30',
+      icon:   '🟠',
+      badge:  'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+      title:  'text-orange-900 dark:text-orange-200',
+      desc:   'text-orange-700 dark:text-orange-400',
+      action: 'text-orange-600 dark:text-orange-400',
+    },
+    minor: {
+      bar:    'border-l-4 border-yellow-400',
       bg:     'bg-yellow-50 dark:bg-yellow-950/30',
       icon:   '🟡',
       badge:  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
       title:  'text-yellow-900 dark:text-yellow-200',
       desc:   'text-yellow-700 dark:text-yellow-400',
       action: 'text-yellow-600 dark:text-yellow-400',
-    },
-    minor: {
-      bar:    'border-l-4 border-green-500',
-      bg:     'bg-green-50 dark:bg-green-950/30',
-      icon:   '🟢',
-      badge:  'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-      title:  'text-green-900 dark:text-green-200',
-      desc:   'text-green-700 dark:text-green-400',
-      action: 'text-green-600 dark:text-green-400',
     },
   };
 
@@ -145,7 +145,7 @@ const SafetyAlertPanel = ({ alerts, onResolve, resolvedAlerts = [] }) => {
                       >
                         <X className="w-3 h-3" /> Acknowledge
                       </button>
-                      {(alert.type === 'ade' || alert.type === 'renal') && (
+                      {(alert.type === 'ade' || alert.type === 'renal' || alert.type === 'override') && (
                         <button
                           onClick={() => handleResolve(alert, 'switch')}
                           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold

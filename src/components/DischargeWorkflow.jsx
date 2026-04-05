@@ -86,13 +86,17 @@ const DischargeWorkflow = ({ onNavigate }) => {
     const newEntry = {
       drug: accepted.antibiotic,
       dose: accepted.dose || 'as prescribed',
-      frequency: 'as prescribed',
-      duration: 'as prescribed',
+      frequency: accepted.frequency || 'as prescribed',
+      duration: accepted.duration || 'as prescribed',
       startDate: accepted.date,
       reason: `Prescribed via AegisRx (${accepted.name || accepted.antibiotic})`,
       _fromPrescribeTab: true,
+      _isOverride: accepted.isOverride || false,
     };
-    const filtered = (resolvedPatient.newMeds || []).filter(m => m.drug !== accepted.antibiotic);
+    const filtered = (resolvedPatient.newMeds || []).filter(m =>
+      m.drug !== accepted.antibiotic &&
+      (!accepted.recommended || m.drug !== accepted.recommended)
+    );
     return { ...resolvedPatient, newMeds: [newEntry, ...filtered] };
   };
 
@@ -170,8 +174,48 @@ const DischargeWorkflow = ({ onNavigate }) => {
   }, [patient]);
 
   const flaggedMeds = useMemo(() => getFlaggedMeds(safetyResult), [safetyResult]);
-  const cascadeAlerts = safetyResult?.allAlerts.filter(a => a.type === 'cascade') || [];
-  const proceedCheck = safetyResult ? canDischargeProceed(safetyResult, resolvedAlerts) : null;
+
+  // Synthetic alert for non-recommended override prescriptions
+  const overrideAlert = useMemo(() => {
+    if (!patient) return null;
+    const rx = acceptedPrescriptions[patient.name];
+    if (!rx?.isOverride) return null;
+    return {
+      title: `Non-Recommended Override — ${rx.name || rx.antibiotic}`,
+      description: `${rx.name || rx.antibiotic} was prescribed instead of the recommended ${rx.recommended || 'guideline drug'}. Override reason: ${rx.overrideReason}${rx.overrideNotes ? `. Notes: ${rx.overrideNotes}` : ''}.`,
+      severity: 'major',
+      type: 'override',
+      medications: [{ drug: rx.antibiotic }],
+      details: {
+        drug: rx.antibiotic,
+        recommended_drug: rx.recommended || '',
+        recommended_dose: '',
+        recommended_frequency: '',
+      },
+    };
+  }, [patient, acceptedPrescriptions]);
+
+  // safetyResult augmented with the override alert for display and proceed checks
+  const effectiveSafetyResult = useMemo(() => {
+    if (!safetyResult) return null;
+    if (!overrideAlert) return safetyResult;
+    return {
+      ...safetyResult,
+      alerts: {
+        ...safetyResult.alerts,
+        major: [overrideAlert, ...(safetyResult.alerts.major || [])],
+      },
+      allAlerts: [overrideAlert, ...(safetyResult.allAlerts || [])],
+      stats: {
+        ...safetyResult.stats,
+        major: (safetyResult.stats.major || 0) + 1,
+        total: (safetyResult.stats.total || 0) + 1,
+      },
+    };
+  }, [safetyResult, overrideAlert]);
+
+  const cascadeAlerts = effectiveSafetyResult?.allAlerts.filter(a => a.type === 'cascade') || [];
+  const proceedCheck = effectiveSafetyResult ? canDischargeProceed(effectiveSafetyResult, resolvedAlerts) : null;
 
   // Patient with any "Switch Med" replacements applied — used for display and discharge generation
   const displayPatient = useMemo(() => {
@@ -247,7 +291,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
     try {
       const [instructions, followUp] = await Promise.all([
         generateMedicationInstructions(displayPatient),
-        generateFollowUpActions(displayPatient, safetyResult.allAlerts),
+        generateFollowUpActions(displayPatient, effectiveSafetyResult.allAlerts),
       ]);
       setDischargeOutput({ instructions, followUp });
       setCurrentStep(4);
@@ -260,9 +304,9 @@ const DischargeWorkflow = ({ onNavigate }) => {
   };
 
   const allMeds = displayPatient ? [...displayPatient.continuingMeds, ...displayPatient.newMeds] : [];
-  const totalAlerts = safetyResult?.stats.total || 0;
-  const criticalCount = safetyResult?.stats.critical || 0;
-  const majorCount = safetyResult?.stats.major || 0;
+  const totalAlerts = effectiveSafetyResult?.stats.total || 0;
+  const criticalCount = effectiveSafetyResult?.stats.critical || 0;
+  const majorCount = effectiveSafetyResult?.stats.major || 0;
   const unresolvedCount = totalAlerts - resolvedAlerts.length;
 
   return (
@@ -400,7 +444,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
           )}
 
           {/* STEP 2+ — Safety results */}
-          {currentStep >= 2 && safetyResult && !safetyLoading && (
+          {currentStep >= 2 && effectiveSafetyResult && !safetyLoading && (
             <section className="space-y-5 mb-7 animate-fade-in">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2">
@@ -431,7 +475,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
                 </div>
               ) : (
                 <SafetyAlertPanel
-                  alerts={safetyResult.alerts}
+                  alerts={effectiveSafetyResult.alerts}
                   onResolve={handleAlertResolve}
                   resolvedAlerts={resolvedAlerts}
                 />

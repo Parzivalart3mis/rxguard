@@ -15,11 +15,41 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const TTL_DAYS = 30;
 
 // Maps internal drug keys to the primary substance name used in OpenFDA.
-// For compound drugs, using the first active ingredient works reliably.
-// null = skip OpenFDA (too generic or no label exists).
+// For compound drugs, the first active ingredient is used.
+// null = skip OpenFDA (too generic or no single label exists).
 const OPENFDA_SUBSTANCE = {
+  // Antibiotics
   tmp_smx:            'sulfamethoxazole',
   amoxicillin_clav:   'amoxicillin',
+  penicillin:         'penicillin v potassium',
+  doxycycline:        'doxycycline hyclate',
+  dicloxacillin:      'dicloxacillin sodium',
+  clindamycin:        'clindamycin hydrochloride',
+  fosfomycin:         'fosfomycin tromethamine',
+  nitrofurantoin:     'nitrofurantoin',
+  cephalexin:         'cephalexin',
+  ciprofloxacin:      'ciprofloxacin',
+  levofloxacin:       'levofloxacin',
+  azithromycin:       'azithromycin',
+  amoxicillin:        'amoxicillin',
+
+  // Cardiovascular / chronic meds
+  lisinopril:         'lisinopril',
+  amlodipine:         'amlodipine besylate',
+  metoprolol:         'metoprolol tartrate',
+  atorvastatin:       'atorvastatin',
+  furosemide:         'furosemide',
+  warfarin:           'warfarin sodium',
+
+  // Metabolic / GI
+  metformin:          'metformin hydrochloride',
+  omeprazole:         'omeprazole',
+
+  // CNS / pain
+  sertraline:         'sertraline hydrochloride',
+  ibuprofen:          'ibuprofen',
+
+  // Other
   potassium_chloride: 'potassium chloride',
   birth_control:      null,
 };
@@ -45,19 +75,34 @@ const keyToDisplayName = (key) =>
 async function fetchOpenFDALabel(drugKey) {
   const substance = keyToSubstanceName(drugKey);
   if (!substance) return null; // key explicitly has no OpenFDA mapping
-  const url = `${OPENFDA_URL}?search=openfda.substance_name:"${encodeURIComponent(substance.toUpperCase())}"&limit=1`;
 
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  const result = data?.results?.[0];
-  if (!result) return null;
+  // Try multiple search strategies in order until one returns a result
+  const strategies = [
+    `openfda.substance_name:"${substance.toUpperCase()}"`,
+    `openfda.generic_name:"${substance}"`,
+    `openfda.substance_name:"${substance.split(' ')[0].toUpperCase()}"`, // base name only
+  ];
 
-  return {
-    adverseReactions: result.adverse_reactions?.[0] ?? null,
-    warnings: result.warnings?.[0] ?? null,
-    drugClass: result.openfda?.pharm_class_cs?.[0] ?? result.openfda?.pharm_class_epc?.[0] ?? null,
-  };
+  for (const search of strategies) {
+    try {
+      const url = `${OPENFDA_URL}?search=${encodeURIComponent(search)}&limit=1`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const result = data?.results?.[0];
+      if (!result) continue;
+
+      return {
+        adverseReactions: result.adverse_reactions?.[0] ?? null,
+        warnings: result.warnings?.[0] ?? null,
+        drugClass: result.openfda?.pharm_class_cs?.[0] ?? result.openfda?.pharm_class_epc?.[0] ?? null,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 // ── Groq parse ─────────────────────────────────────────────────────────────────

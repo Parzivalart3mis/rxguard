@@ -62,7 +62,7 @@ function App() {
   };
 
   const handlePrescribe = (data) => {
-    if (activePatient) recordPrescription(activePatient.name, data);
+    if (activePatient) recordPrescription(activePatient.name, { ...data, isOverride: false });
     showNotification('success', `Prescription for ${data.name || data.antibiotic} recorded. Guideline-concordant prescribing noted.`);
   };
 
@@ -74,7 +74,7 @@ function App() {
 
   const handleOverrideConfirm = (reasonData) => {
     setShowOverrideModal(false);
-    if (activePatient && overrideData) recordPrescription(activePatient.name, overrideData);
+    if (activePatient && overrideData) recordPrescription(activePatient.name, { ...overrideData, isOverride: true, overrideReason: reasonData.reason, overrideNotes: reasonData.notes || null });
     showNotification('warning', `Override recorded: ${overrideData?.name || overrideData?.antibiotic} prescribed. Reason: ${reasonData.reason}`);
     setOverrideData(null);
   };

@@ -35,7 +35,13 @@ export const PatientProvider = ({ children }) => {
       [patientName]: {
         antibiotic: data.antibiotic,
         name: data.name || data.antibiotic,
-        dose: data.dose || 'as prescribed',
+        dose: data.dose || null,
+        frequency: data.frequency || null,
+        duration: data.duration || null,
+        recommended: data.recommended || null,
+        isOverride: data.isOverride || false,
+        overrideReason: data.overrideReason || null,
+        overrideNotes: data.overrideNotes || null,
         date: new Date().toISOString().split('T')[0],
       },
     }));

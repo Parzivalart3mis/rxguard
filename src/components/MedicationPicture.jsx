@@ -40,6 +40,11 @@ const MedicationPicture = ({ patient, flaggedMeds = [] }) => {
             Reason: {med.stopReason}
           </div>
         )}
+        {med._isOverride && (
+          <div className="mt-1.5 text-xs font-semibold text-purple-700 dark:text-purple-400 flex items-center gap-1">
+            ↩ Non-recommended override
+          </div>
+        )}
         {flagged && (
           <div className="mt-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
             ⚠ Safety concern

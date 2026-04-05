@@ -16,6 +16,8 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
   const [showAlternatives, setShowAlternatives]     = useState(false);
   const [rationaleState, setRationaleState]         = useState({ text: null, forAntibiotic: null });
   const [suboptimalState, setSuboptimalState]       = useState({ text: null, forAntibiotic: null });
+  const [showOverrideForm, setShowOverrideForm]     = useState(false);
+  const [overrideForm, setOverrideForm]             = useState({ dose: '', frequency: '', duration: '' });
 
   const [baseRecommendation, setBaseRecommendation] = useState(null);
   const [recommendation,     setRecommendation]     = useState(null);
@@ -122,14 +124,26 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
     }
   };
 
-  const handleOverride = () => {
+  const handleOverrideClick = () => {
+    setOverrideForm({
+      dose: assessment?.dose || '',
+      frequency: '',
+      duration: rec?.duration || '',
+    });
+    setShowOverrideForm(true);
+  };
+
+  const handleOverrideConfirm = () => {
     const meta = antibioticMeta[selectedAntibiotic];
     onOverride({
       antibiotic: selectedAntibiotic,
       name: meta?.name || selectedAntibiotic,
-      dose: meta?.typicalDose || null,
+      dose: overrideForm.dose || null,
+      frequency: overrideForm.frequency || null,
+      duration: overrideForm.duration || null,
       recommended: rec?.recommendation?.antibiotic,
     });
+    setShowOverrideForm(false);
   };
 
   const isRecommended = () => {
@@ -410,24 +424,74 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
             </div>
           )}
 
+          {/* Override form */}
+          {showOverrideForm && (
+            <div className="mb-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Specify Prescription Details</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Dose</label>
+                  <input
+                    type="text"
+                    value={overrideForm.dose}
+                    onChange={e => setOverrideForm(f => ({ ...f, dose: e.target.value }))}
+                    placeholder="e.g. 500mg"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Frequency</label>
+                  <input
+                    type="text"
+                    value={overrideForm.frequency}
+                    onChange={e => setOverrideForm(f => ({ ...f, frequency: e.target.value }))}
+                    placeholder="e.g. twice daily"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Duration</label>
+                  <input
+                    type="text"
+                    value={overrideForm.duration}
+                    onChange={e => setOverrideForm(f => ({ ...f, duration: e.target.value }))}
+                    placeholder="e.g. 7 days"
+                    className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleOverrideConfirm} className="btn-primary flex-1 justify-center text-sm">
+                  <Check className="w-3.5 h-3.5" />
+                  Confirm Override
+                </button>
+                <button onClick={() => setShowOverrideForm(false)} className="btn-secondary flex-1 justify-center text-sm">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons */}
-          <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
-            <button
-              onClick={handlePrescribe}
-              disabled={!rec?.recommendation}
-              className="btn-primary flex-1 justify-center"
-            >
-              <Check className="w-4 h-4" />
-              Accept Recommendation
-            </button>
-            <button
-              onClick={handleOverride}
-              disabled={assessment?.safe === false || isRecommended()}
-              className="btn-secondary flex-1 justify-center"
-            >
-              Override &amp; Prescribe
-            </button>
-          </div>
+          {!showOverrideForm && (
+            <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+              <button
+                onClick={handlePrescribe}
+                disabled={!rec?.recommendation}
+                className="btn-primary flex-1 justify-center"
+              >
+                <Check className="w-4 h-4" />
+                Accept Recommendation
+              </button>
+              <button
+                onClick={handleOverrideClick}
+                disabled={assessment?.safe === false || isRecommended()}
+                className="btn-secondary flex-1 justify-center"
+              >
+                Override &amp; Prescribe
+              </button>
+            </div>
+          )}
         </>
       )}
 
