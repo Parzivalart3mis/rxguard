@@ -1,6 +1,6 @@
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, Legend
+  XAxis, YAxis, Label, ResponsiveContainer, Tooltip as RechartsTooltip, Legend
 } from 'recharts';
 import { getDashboardStats } from '../data/prescribingHistory.js';
 import PatientSelector from './PatientSelector.jsx';
@@ -82,10 +82,10 @@ const PrescribingDashboard = ({ onNavigate, patients, loading, onSelectPatient }
               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-clinical-teal/20 text-clinical-teal uppercase tracking-widest border border-clinical-teal/30">
                 AegisRx
               </span>
-              <span className="text-gray-400 text-xs font-medium">Antibiotic Stewardship Program</span>
+              <span className="text-gray-400 text-xs font-medium">Safer Prescribing, Smarter Care</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
-              Welcome back, Dr. Martinez
+              Welcome back, Dr. Patel
             </h1>
             <p className="text-slate-300 text-sm max-w-lg leading-relaxed">
               Your overall adherence to institutional prescribing guidelines is {current.adherenceRate}%. 
@@ -96,20 +96,17 @@ const PrescribingDashboard = ({ onNavigate, patients, loading, onSelectPatient }
           {/* Quick patient start */}
           <div className="w-full md:w-80 bg-white/5 backdrop-blur-sm border border-white/10 p-3.5 rounded-xl shadow-lg">
             <label className="block text-xs font-medium text-slate-300 mb-2">Start a new workflow</label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                {/* Custom styling applied via props down to PatientSelector isn't trivial without rewriting PatientSelector, 
-                    so we will just pass it, the styles will adapt based on the wrapping container. */}
-                <PatientSelector 
-                  patients={patients}
-                  selectedPatient={activePatient}
-                  loading={loading}
-                  onSelect={(p) => {
-                    onSelectPatient(p);
-                    if (p) onNavigate('prescribe');
-                  }}
-                />
-              </div>
+            {/* Force white bg + dark text on the select regardless of theme — hero is always dark */}
+            <div className="[&_label]:!text-white/80 [&_.select-base]:!bg-white [&_.select-base]:!text-gray-900 [&_.select-base]:!border-white/20">
+              <PatientSelector
+                patients={patients}
+                selectedPatient={activePatient}
+                loading={loading}
+                onSelect={(p) => {
+                  onSelectPatient(p);
+                  if (p) onNavigate('prescribe');
+                }}
+              />
             </div>
             {!activePatient && (
               <p className="text-[10px] text-slate-400 mt-2 text-right">
@@ -201,15 +198,37 @@ const PrescribingDashboard = ({ onNavigate, patients, loading, onSelectPatient }
           {/* Top antibiotics */}
           <div className="card p-5">
             <h3 className="section-title mb-4">Top 5 Antibiotics</h3>
-            <div className="h-56">
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={current.topAntibiotics || []}
                   layout="vertical"
-                  margin={{ left: 0, right: 15, top: 0, bottom: 0 }}
+                  margin={{ left: 0, right: 15, top: 0, bottom: 28 }}
                 >
-                  <XAxis type="number" tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500" axisLine={false} tickLine={false} />
-                  <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-600 dark:text-slate-400 font-medium" axisLine={false} tickLine={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 11, fill: 'currentColor' }}
+                    className="text-slate-400 dark:text-slate-500"
+                    axisLine={false}
+                    tickLine={false}
+                    allowDecimals={false}
+                  >
+                    <Label
+                      value="Number of Prescriptions"
+                      offset={-10}
+                      position="insideBottom"
+                      style={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
+                    />
+                  </XAxis>
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    width={105}
+                    tick={{ fontSize: 11, fill: 'currentColor' }}
+                    className="text-slate-600 dark:text-slate-400 font-medium"
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(13, 115, 119, 0.05)' }} />
                   <Bar dataKey="count" fill="#0d7377" radius={[0, 4, 4, 0]} barSize={16}>
                     {current.topAntibiotics?.map((entry, index) => (
@@ -228,16 +247,40 @@ const PrescribingDashboard = ({ onNavigate, patients, loading, onSelectPatient }
             <h3 className="section-title">Monthly Prescribing Trends</h3>
             <span className="text-xs text-slate-500">6 month history</span>
           </div>
-          <div className="h-56 mt-2">
+          <div className="h-64 mt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={stats.trend} margin={{ left: -20, right: 10, top: 5, bottom: 0 }}>
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500" axisLine={false} tickLine={false} />
+              <LineChart data={stats.trend} margin={{ left: 10, right: 10, top: 5, bottom: 28 }}>
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  className="text-slate-400 dark:text-slate-500"
+                  axisLine={false}
+                  tickLine={false}
+                >
+                  <Label
+                    value="Month"
+                    offset={-10}
+                    position="insideBottom"
+                    style={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
+                  />
+                </XAxis>
                 <YAxis
-                  tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-400 dark:text-slate-500"
-                  axisLine={false} tickLine={false}
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  className="text-slate-400 dark:text-slate-500"
+                  axisLine={false}
+                  tickLine={false}
                   domain={[0, 100]}
                   tickFormatter={(v) => `${v}%`}
-                />
+                  width={48}
+                >
+                  <Label
+                    value="Rate (%)"
+                    angle={-90}
+                    position="insideLeft"
+                    offset={10}
+                    style={{ fontSize: 11, fill: '#94a3b8', fontWeight: 500 }}
+                  />
+                </YAxis>
                 <RechartsTooltip content={<CustomTooltip />} />
                 <Legend
                   iconType="circle" iconSize={8}

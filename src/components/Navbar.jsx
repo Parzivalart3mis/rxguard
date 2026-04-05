@@ -1,4 +1,4 @@
-import { Sun, Moon, User, Menu, Bell } from 'lucide-react';
+import { Sun, Moon, User, Menu } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext.jsx';
 import { usePatientContext } from '../contexts/PatientContext.jsx';
 
@@ -73,21 +73,13 @@ const Navbar = ({ pageTitle, pageSub, onMenuClick }) => {
             }
           </button>
 
-          {/* Notification bell (decorative in demo) */}
-          <button className="relative w-8 h-8 flex items-center justify-center rounded-lg
-                             text-gray-500 dark:text-gray-400
-                             hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-          </button>
-
           {/* Divider */}
           <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
 
           {/* User avatar */}
           <div className="flex items-center gap-2.5 pl-1">
             <div className="hidden sm:block text-right">
-              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">Dr. S. Martinez</p>
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">Dr. S. Patel</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-500">Internal Medicine</p>
             </div>
             <div className="relative">

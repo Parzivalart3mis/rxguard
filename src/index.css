@@ -245,24 +245,41 @@
 }
 
 @media print {
+  @page {
+    margin: 0.85in;
+  }
+
   body {
     background: white !important;
     color: black !important;
+    font-size: 11pt;
+    line-height: 1.6;
   }
+
   .no-print {
     display: none !important;
   }
+
   .print-only {
     display: block !important;
   }
+
   .card, .stat-card {
     box-shadow: none !important;
-    border: 1px solid #ccc !important;
+    border: 1px solid #d1d5db !important;
     break-inside: avoid;
   }
-  /* Force colors to print correctly */
+
+  /* Force colors to print correctly — color-adjust is deprecated */
   * {
     -webkit-print-color-adjust: exact !important;
-    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Discharge document overrides */
+  .discharge-doc .card {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
   }
 }
