@@ -27,6 +27,21 @@ function loadDrugInteractions() {
     }));
 }
 
+// Structured recommendations keyed by "drug_egfrThreshold".
+// Overlaid onto DB rows so no schema migration is needed.
+const RENAL_RECOMMENDATIONS = {
+  'metformin_30':       { recommended_drug: 'insulin glargine',              recommended_dose: '10 units',    recommended_frequency: 'once daily at bedtime' },
+  'metformin_45':       { recommended_drug: 'metformin',                     recommended_dose: '500mg',       recommended_frequency: 'twice daily' },
+  'nitrofurantoin_30':  { recommended_drug: 'trimethoprim-sulfamethoxazole', recommended_dose: '80/400mg',    recommended_frequency: 'twice daily' },
+  'amoxicillin_30':     { recommended_drug: 'amoxicillin',                   recommended_dose: '500mg',       recommended_frequency: 'every 12–24 hours' },
+  'lisinopril_30':      { recommended_drug: 'lisinopril',                    recommended_dose: '5mg',         recommended_frequency: 'once daily' },
+  'ibuprofen_30':       { recommended_drug: 'acetaminophen',                 recommended_dose: '500mg',       recommended_frequency: 'every 6 hours as needed' },
+  'ibuprofen_60':       { recommended_drug: 'ibuprofen',                     recommended_dose: '400mg',       recommended_frequency: 'every 8 hours with food' },
+  'furosemide_30':      { recommended_drug: 'furosemide',                    recommended_dose: '80mg',        recommended_frequency: 'twice daily' },
+  'gabapentin_30':      { recommended_drug: 'gabapentin',                    recommended_dose: '100–300mg',   recommended_frequency: 'once daily or every 12 hours' },
+  'enoxaparin_30':      { recommended_drug: 'unfractionated heparin',        recommended_dose: '5000 units',  recommended_frequency: 'every 8–12 hours subcutaneous' },
+};
+
 function loadRenalDosingRules() {
   const rows = db
     .prepare(`
@@ -47,11 +62,15 @@ function loadRenalDosingRules() {
         requirements: [],
       };
     }
+    const rec = RENAL_RECOMMENDATIONS[`${row.drug_key}_${row.egfr_threshold}`] || {};
     rules[row.drug_key].requirements.push({
-      egfr_threshold: row.egfr_threshold,
-      action:         row.action,
-      message:        row.message,
-      severity:       row.severity,
+      egfr_threshold:       row.egfr_threshold,
+      action:               row.action,
+      message:              row.message,
+      severity:             row.severity,
+      recommended_drug:     rec.recommended_drug     || null,
+      recommended_dose:     rec.recommended_dose     || null,
+      recommended_frequency: rec.recommended_frequency || null,
     });
   }
   return rules;
