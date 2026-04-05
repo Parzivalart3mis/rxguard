@@ -1,23 +1,66 @@
 // Scoring engine for bacterial probability calculations
 
+/**
+ * Build an observation lookup map keyed by BOTH display name AND LOINC code.
+ * Synthetic patients use display names; FHIR patients carry LOINC codes.
+ * Storing both lets every scoring function work regardless of data source.
+ */
+function buildObsMap(observations) {
+  const map = new Map();
+  for (const o of observations) {
+    if (o.display) map.set(o.display, o);
+    if (o.code && o.code !== o.display) map.set(o.code, o);
+  }
+  return map;
+}
+
+// LOINC code aliases so scoring functions can find values from either source
+const LOINC = {
+  temperature:        ['Body temperature',                '8310-5'],
+  cough:              ['Cough',                           '33717-0'],
+  tonsils:            ['Tonsillar swelling/exudate', 'Tonsillar exudate', '664-3'],
+  lymph:              ['Tender anterior cervical lymphadenopathy', 'LA16480-2'],
+  dysuria:            ['Dysuria',                         '49650-1'],
+  urinaryFrequency:   ['Urinary frequency',               '198130006'],
+  vaginalDischarge:   ['Vaginal discharge',               '33905-1'],
+  nitrites:           ['Nitrites in urine',               '5802-4'],
+  leukocyteEsterase:  ['Leukocyte esterase',              '5797-6'],
+  urineCulture:       ['Urine culture',                   '630-4'],
+  wbc:                ['WBC count',                       '6690-2'],
+  crp:                ['C-reactive protein',              '1988-5'],
+  procalcitonin:      ['Procalcitonin',                   '33959-9', '75241-0'],
+  duration:           ['Duration of symptoms'],
+  biphasic:           ['Biphasic illness'],
+  cxrConsolidation:   ['Chest X-ray consolidation', 'Consolidation on CXR'],
+  erythema:           ['Erythema on left lower leg', 'Expanding erythema'],
+  warmth:             ['Warmth and tenderness'],
+  abscess:            ['Abscess'],
+};
+
+/** Look up an observation trying each alias in order, return the first match. */
+function obs(map, ...keys) {
+  for (const k of keys) if (map.has(k)) return map.get(k);
+  return undefined;
+}
+
 export const calculateCentorScore = (observations, age) => {
   let score = 0;
-  const obsMap = new Map(observations.map(o => [o.display, o]));
+  const obsMap = buildObsMap(observations);
 
   // Fever > 38°C
-  const tempObs = obsMap.get("Body temperature");
+  const tempObs = obs(obsMap, ...LOINC.temperature);
   if (tempObs && tempObs.value > 38) score += 1;
 
   // Absence of cough
-  const coughObs = obsMap.get("Cough");
+  const coughObs = obs(obsMap, ...LOINC.cough);
   if (coughObs && (coughObs.value === "absent" || !coughObs.value)) score += 1;
 
   // Tonsillar swelling/exudate
-  const tonsilObs = obsMap.get("Tonsillar swelling/exudate") || obsMap.get("Tonsillar exudate");
+  const tonsilObs = obs(obsMap, ...LOINC.tonsils);
   if (tonsilObs && tonsilObs.value === "present") score += 1;
 
   // Tender anterior cervical lymphadenopathy
-  const lymphObs = obsMap.get("Tender anterior cervical lymphadenopathy");
+  const lymphObs = obs(obsMap, ...LOINC.lymph);
   if (lymphObs && lymphObs.value === "present") score += 1;
 
   // Age adjustment
@@ -47,37 +90,37 @@ export const getCentorInterpretation = (score) => {
 };
 
 export const calculateUTIProbability = (observations) => {
-  const obsMap = new Map(observations.map(o => [o.display, o]));
-  
+  const obsMap = buildObsMap(observations);
+
   let score = 0;
   let indicators = [];
 
   // Dysuria + frequency without vaginal discharge
-  const dysuria = obsMap.get("Dysuria");
-  const frequency = obsMap.get("Urinary frequency");
-  const discharge = obsMap.get("Vaginal discharge");
-  
+  const dysuria  = obs(obsMap, ...LOINC.dysuria);
+  const frequency = obs(obsMap, ...LOINC.urinaryFrequency);
+  const discharge = obs(obsMap, ...LOINC.vaginalDischarge);
+
   if (dysuria?.value === "present" && frequency?.value === "present" && discharge?.value !== "present") {
     score += 40;
     indicators.push("Classic UTI symptoms (dysuria + frequency, no discharge)");
   }
 
   // Positive nitrites
-  const nitrites = obsMap.get("Nitrites in urine");
+  const nitrites = obs(obsMap, ...LOINC.nitrites);
   if (nitrites?.value === "positive") {
     score += 30;
     indicators.push("Positive nitrites (highly specific)");
   }
 
   // Positive leukocyte esterase
-  const leukocyte = obsMap.get("Leukocyte esterase");
+  const leukocyte = obs(obsMap, ...LOINC.leukocyteEsterase);
   if (leukocyte?.value === "positive") {
     score += 20;
     indicators.push("Positive leukocyte esterase");
   }
 
   // Urine culture positive
-  const culture = obsMap.get("Urine culture");
+  const culture = obs(obsMap, ...LOINC.urineCulture);
   if (culture?.value && culture.value.includes("CFU/mL")) {
     const cfuMatch = culture.value.match(/(\d+)/);
     if (cfuMatch && parseInt(cfuMatch[1]) >= 100000) {
@@ -96,13 +139,13 @@ export const calculateUTIProbability = (observations) => {
 };
 
 export const calculateURIScore = (observations) => {
-  const obsMap = new Map(observations.map(o => [o.display, o]));
-  
+  const obsMap = buildObsMap(observations);
+
   let score = 0;
   let indicators = [];
 
   // Duration
-  const duration = obsMap.get("Duration of symptoms");
+  const duration = obs(obsMap, ...LOINC.duration);
   if (duration) {
     const days = parseInt(duration.value);
     if (days < 10) {
@@ -115,14 +158,14 @@ export const calculateURIScore = (observations) => {
   }
 
   // Temperature
-  const temp = obsMap.get("Body temperature");
+  const temp = obs(obsMap, ...LOINC.temperature);
   if (temp && temp.value > 38.5) {
     score += 10;
     indicators.push("High fever (may suggest bacterial)");
   }
 
   // Procalcitonin
-  const pct = obsMap.get("Procalcitonin");
+  const pct = obs(obsMap, ...LOINC.procalcitonin);
   if (pct) {
     if (pct.value < 0.25) {
       score = Math.min(score, 20);
@@ -134,21 +177,21 @@ export const calculateURIScore = (observations) => {
   }
 
   // CRP
-  const crp = obsMap.get("C-reactive protein");
+  const crp = obs(obsMap, ...LOINC.crp);
   if (crp && crp.value > 100) {
     score += 20;
     indicators.push("CRP > 100 mg/L (bacterial inflammation)");
   }
 
   // Biphasic illness (for sinusitis)
-  const biphasic = obsMap.get("Biphasic illness");
+  const biphasic = obs(obsMap, ...LOINC.biphasic);
   if (biphasic?.value && biphasic.value.includes("yes")) {
     score += 35;
     indicators.push("Biphasic illness pattern (bacterial sinusitis)");
   }
 
   // WBC
-  const wbc = obsMap.get("WBC count");
+  const wbc = obs(obsMap, ...LOINC.wbc);
   if (wbc && wbc.value > 10) {
     score += 10;
     indicators.push("Elevated WBC");
@@ -166,37 +209,37 @@ export const calculateURIScore = (observations) => {
 };
 
 export const calculatePneumoniaScore = (observations) => {
-  const obsMap = new Map(observations.map(o => [o.display, o]));
-  
+  const obsMap = buildObsMap(observations);
+
   let score = 0;
   let indicators = [];
 
   // Consolidation on imaging
-  const cxr = obsMap.get("Chest X-ray consolidation") || obsMap.get("Consolidation on CXR");
+  const cxr = obs(obsMap, ...LOINC.cxrConsolidation);
   if (cxr?.value) {
     score += 50;
     indicators.push("Consolidation on imaging (definitive)");
   }
 
   // Elevated WBC + fever + productive cough
-  const wbc = obsMap.get("WBC count");
-  const temp = obsMap.get("Body temperature");
-  const cough = obsMap.get("Cough");
-  
+  const wbc  = obs(obsMap, ...LOINC.wbc);
+  const temp = obs(obsMap, ...LOINC.temperature);
+  const cough = obs(obsMap, ...LOINC.cough);
+
   if (wbc?.value > 10 && temp?.value > 38 && cough?.value === "productive") {
     score += 30;
     indicators.push("Clinical triad: elevated WBC + fever + productive cough");
   }
 
   // CRP
-  const crp = obsMap.get("C-reactive protein");
+  const crp = obs(obsMap, ...LOINC.crp);
   if (crp?.value > 100) {
     score += 20;
     indicators.push("CRP > 100 mg/L (strong indicator)");
   }
 
   // Procalcitonin
-  const pct = obsMap.get("Procalcitonin");
+  const pct = obs(obsMap, ...LOINC.procalcitonin);
   if (pct?.value > 0.5) {
     score += 25;
     indicators.push("Procalcitonin > 0.5 ng/mL (bacterial pneumonia likely)");
@@ -215,40 +258,40 @@ export const calculatePneumoniaScore = (observations) => {
 };
 
 export const calculateSkinInfectionScore = (observations) => {
-  const obsMap = new Map(observations.map(o => [o.display, o]));
-  
+  const obsMap = buildObsMap(observations);
+
   let score = 0;
   let indicators = [];
 
   // Cellulitis signs
-  const erythema = obsMap.get("Erythema on left lower leg") || obsMap.get("Expanding erythema");
+  const erythema = obs(obsMap, ...LOINC.erythema);
   if (erythema?.value === "expanding" || erythema?.value === "present") {
     score += 40;
     indicators.push("Expanding erythema (cellulitis)");
   }
 
-  const warmth = obsMap.get("Warmth and tenderness");
+  const warmth = obs(obsMap, ...LOINC.warmth);
   if (warmth?.value === "present") {
     score += 30;
     indicators.push("Warmth and tenderness (cellulitis)");
   }
 
   // Fever
-  const temp = obsMap.get("Body temperature");
+  const temp = obs(obsMap, ...LOINC.temperature);
   if (temp?.value > 38) {
     score += 15;
     indicators.push("Fever > 38°C (systemic infection)");
   }
 
   // Abscess
-  const abscess = obsMap.get("Abscess");
+  const abscess = obs(obsMap, ...LOINC.abscess);
   if (abscess?.value === "present") {
     score += 35;
     indicators.push("Abscess present - I&D may be sufficient");
   }
 
   // CRP
-  const crp = obsMap.get("C-reactive protein");
+  const crp = obs(obsMap, ...LOINC.crp);
   if (crp?.value > 50) {
     score += 15;
     indicators.push("Elevated CRP (active inflammation)");
@@ -263,52 +306,136 @@ export const calculateSkinInfectionScore = (observations) => {
   };
 };
 
+// Priority-ordered matchers: first match wins.
+// Each entry: [testFn, conditionKey | conditionFn]
+const CONDITION_MATCHERS = [
+  // Pharyngitis / sore throat
+  [(c) => c.code.startsWith("J02") || /pharyngitis|strep throat|sore throat|tonsill/.test(c.display),
+   (patient) => (patient.centorScore >= 4 ? "strep_pharyngitis" : "viral_pharyngitis")],
+
+  // UTI / cystitis / pyelonephritis (recurrent → complicated)
+  [(c) => c.code.startsWith("N30") || c.code.startsWith("N10") || c.code.startsWith("N11") ||
+          c.code.startsWith("N12") ||
+          /urinary tract infection|cystitis|pyelonephritis|uti\b/.test(c.display),
+   (patient) => {
+     const recurrent = /recurrent|complicated|chronic/.test(patient.conditions.find(
+       cx => /urinary tract infection|cystitis/.test(cx.display.toLowerCase())
+     )?.display?.toLowerCase() || '');
+     return recurrent ? "complicated_uti" : "uncomplicated_uti";
+   }],
+
+  // Pneumonia
+  [(c) => c.code.startsWith("J18") || c.code.startsWith("J15") || c.code.startsWith("J14") ||
+          c.code.startsWith("J13") ||
+          /pneumonia|lung infection/.test(c.display),
+   () => "community_acquired_pneumonia"],
+
+  // Otitis media
+  [(c) => c.code.startsWith("H66") || c.code.startsWith("H65") ||
+          /otitis media|ear infection/.test(c.display),
+   () => "acute_otitis_media"],
+
+  // Sinusitis
+  [(c) => c.code.startsWith("J01") || /sinusitis/.test(c.display),
+   (patient) => {
+     const obsMap = buildObsMap(patient.observations);
+     const duration = obs(obsMap, ...LOINC.duration);
+     return (duration && parseInt(duration.value) < 10) ? "viral_sinusitis" : "acute_sinusitis";
+   }],
+
+  // Viral URI / common cold (must come after sinusitis)
+  [(c) => c.code.startsWith("J06") || c.code.startsWith("J00") ||
+          (/upper respiratory|common cold|nasopharyngitis|rhinitis/.test(c.display) &&
+           !/sinusitis/.test(c.display)),
+   () => "viral_uri"],
+
+  // Cellulitis / skin infection
+  [(c) => c.code.startsWith("L03") || c.code.startsWith("L08") ||
+          /cellulitis|skin infection|erysipelas/.test(c.display),
+   () => "cellulitis"],
+
+  // Bronchitis — treat as URI for scoring
+  [(c) => c.code.startsWith("J20") || /bronchitis/.test(c.display),
+   () => "viral_uri"],
+];
+
 export const determineCondition = (patient) => {
-  const condition = patient.conditions[0];
-  if (!condition) return null;
+  if (!patient.conditions?.length) return "general_infection";
 
-  const code = condition.code;
-  const display = condition.display.toLowerCase();
-
-  if (code.startsWith("J02") || display.includes("pharyngitis")) {
-    return patient.centorScore >= 4 ? "strep_pharyngitis" : "viral_pharyngitis";
-  }
-  if (code.startsWith("N30") || display.includes("cystitis")) {
-    return patient.pastAntibiotics?.length > 0 && 
-           patient.pastAntibiotics[0].date > "2025-01-01" ? "complicated_uti" : "uncomplicated_uti";
-  }
-  if (code.startsWith("J18") || display.includes("pneumonia")) {
-    return "community_acquired_pneumonia";
-  }
-  if (code.startsWith("H66") || display.includes("otitis")) {
-    return "acute_otitis_media";
-  }
-  if (code.startsWith("J06") || (display.includes("upper respiratory") && !display.includes("sinusitis"))) {
-    return "viral_uri";
-  }
-  if (code.startsWith("J01") || display.includes("sinusitis")) {
-    const obsMap = new Map(patient.observations.map(o => [o.display, o]));
-    const duration = obsMap.get("Duration of symptoms");
-    if (duration && parseInt(duration.value) < 10) {
-      return "viral_sinusitis";
-    }
-    return "acute_sinusitis";
-  }
-  if (code.startsWith("L03") || display.includes("cellulitis")) {
-    return "cellulitis";
+  // Try each condition in order — return the first match found across all conditions
+  for (const matcher of CONDITION_MATCHERS) {
+    const [test, resolve] = matcher;
+    const matched = patient.conditions.find((c) => {
+      const d = c.display.toLowerCase();
+      return test({ code: c.code, display: d });
+    });
+    if (matched) return typeof resolve === 'function' ? resolve(patient) : resolve;
   }
 
-  return null;
+  return "general_infection";
+};
+
+export const calculateGeneralInfectionScore = (observations) => {
+  const obsMap = buildObsMap(observations);
+  let score = 0;
+  const indicators = [];
+
+  const temp = obs(obsMap, ...LOINC.temperature);
+  if (temp?.value > 39) {
+    score += 30; indicators.push(`High fever ${temp.value}°C (strong infection marker)`);
+  } else if (temp?.value > 38) {
+    score += 20; indicators.push(`Fever ${temp.value}°C`);
+  }
+
+  const wbc = obs(obsMap, ...LOINC.wbc);
+  if (wbc?.value > 15) {
+    score += 30; indicators.push(`Markedly elevated WBC ${wbc.value} ×10⁹/L`);
+  } else if (wbc?.value > 10) {
+    score += 20; indicators.push(`Elevated WBC ${wbc.value} ×10⁹/L`);
+  } else if (wbc?.value < 4) {
+    score += 15; indicators.push(`Low WBC ${wbc.value} ×10⁹/L (severe infection possible)`);
+  }
+
+  const crp = obs(obsMap, ...LOINC.crp);
+  if (crp?.value > 100) {
+    score += 25; indicators.push(`CRP ${crp.value} mg/L (markedly elevated)`);
+  } else if (crp?.value > 50) {
+    score += 15; indicators.push(`CRP ${crp.value} mg/L (elevated)`);
+  } else if (crp?.value > 10) {
+    score += 5;  indicators.push(`CRP ${crp.value} mg/L (mildly elevated)`);
+  }
+
+  const pct = obs(obsMap, ...LOINC.procalcitonin);
+  if (pct?.value > 2) {
+    score += 25; indicators.push(`Procalcitonin ${pct.value} ng/mL (bacterial sepsis likely)`);
+  } else if (pct?.value > 0.5) {
+    score += 15; indicators.push(`Procalcitonin ${pct.value} ng/mL (bacterial infection likely)`);
+  } else if (pct?.value < 0.1) {
+    score = Math.max(0, score - 20);
+    indicators.push(`Procalcitonin ${pct.value} ng/mL (bacterial infection unlikely)`);
+  }
+
+  const recommendation =
+    score >= 70 ? "Bacterial infection likely — antibiotic therapy appropriate" :
+    score >= 40 ? "Possible bacterial infection — clinical judgment required" :
+    score >= 20 ? "Low–moderate probability — consider watchful waiting" :
+                  "Bacterial infection unlikely based on available markers";
+
+  return {
+    probability: Math.min(100, score),
+    indicators,
+    recommendation,
+  };
 };
 
 export const calculateBacterialProbability = (patient) => {
   const condition = determineCondition(patient);
-  
   if (!condition) {
     return {
       score: 50,
-      explanation: "Unable to determine condition type for scoring",
-      details: []
+      explanation: "No active conditions on record",
+      details: { indicators: [] },
+      method: null,
     };
   }
 
@@ -391,7 +518,6 @@ export const calculateBacterialProbability = (patient) => {
     }
 
     case "acute_otitis_media":
-      // AOM is usually bacterial
       result = {
         score: 80,
         explanation: "Acute otitis media with bulging TM and fever - bacterial etiology likely",
@@ -401,14 +527,18 @@ export const calculateBacterialProbability = (patient) => {
       };
       break;
 
-    default:
+    case "general_infection":
+    default: {
+      const genResult = calculateGeneralInfectionScore(patient.observations);
       result = {
-        score: 50,
-        explanation: "Clinical judgment required",
-        details: {},
-        method: "Unknown",
+        score: genResult.probability,
+        explanation: genResult.recommendation,
+        details: genResult,
+        method: "General Infection Markers",
         condition: condition
       };
+      break;
+    }
   }
 
   return result;

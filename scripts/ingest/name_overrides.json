@@ -1,0 +1,21 @@
+{
+  "_comment": "Numeric strings are treated as direct RxCUI overrides (no API call). Non-numeric strings are used as the query name sent to the RxNorm API.",
+
+  "amoxicillin":      "723",
+  "azithromycin":     "18631",
+  "doxycycline":      "3640",
+  "nitrofurantoin":   "7454",
+  "ciprofloxacin":    "2551",
+  "cephalexin":       "2231",
+  "clindamycin":      "2582",
+  "metformin":        "6809",
+  "amlodipine":       "17767",
+  "metoprolol":       "6918",
+  "omeprazole":       "7646",
+  "sertraline":       "36437",
+  "clopidogrel":      "32968",
+
+  "tmp_smx":          "sulfamethoxazole trimethoprim",
+  "amoxicillin_clav": "amoxicillin clavulanate",
+  "potassium_chloride": "potassium chloride"
+}

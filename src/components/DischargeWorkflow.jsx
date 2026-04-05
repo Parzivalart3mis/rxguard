@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, AlertTriangle, CheckCircle, Loader2, ClipboardList, Zap, FileText, Users } from 'lucide-react';
 
 import StepIndicator from './StepIndicator.jsx';
@@ -9,9 +9,33 @@ import SafetyAlertPanel from './SafetyAlertPanel.jsx';
 import CascadeFlowDiagram from './CascadeFlowDiagram.jsx';
 import WatchOutSymptomCard from './WatchOutSymptomCard.jsx';
 
-import dischargePatients from '../data/dischargePatients.js';
-import { runSafetyChecks, canDischargeProceed } from '../services/safetyEngine.js';
+import { useDischargePatients } from '../hooks/useDischargePatients.js';
 import { generateMedicationInstructions, generateFollowUpActions } from '../services/dischargeGenerator.js';
+
+// Pure discharge-gate logic — no data imports needed
+const canDischargeProceed = (safetyResult, resolvedAlertIds = []) => {
+  const unresolvedCritical = safetyResult.alerts.critical.filter(
+    (a) => !resolvedAlertIds.includes(a.title)
+  );
+  if (unresolvedCritical.length > 0) {
+    return {
+      canProceed: false,
+      reason: `${unresolvedCritical.length} critical alert(s) must be resolved`,
+      blockingAlerts: unresolvedCritical,
+    };
+  }
+  const unresolvedMajor = safetyResult.alerts.major.filter(
+    (a) => !resolvedAlertIds.includes(a.title)
+  );
+  if (unresolvedMajor.length > 0) {
+    return {
+      canProceed: true,
+      warning: `${unresolvedMajor.length} major alert(s) should be reviewed`,
+      pendingAlerts: unresolvedMajor,
+    };
+  }
+  return { canProceed: true, warning: null };
+};
 
 // Extract drug names involved in any alert
 const getFlaggedMeds = (safetyResult) => {
@@ -36,24 +60,64 @@ const SeverityBadge = ({ count, label, color }) => {
   );
 };
 
-const DischargeWorkflow = () => {
+const DischargeWorkflow = ({ acceptedPrescriptions = {} }) => {
+  const { patients: dischargePatientsAll, loading: patientsLoading, getDischargePatient } = useDischargePatients();
+
   const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep]   = useState(1);
   const [resolvedAlerts, setResolvedAlerts] = useState([]);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating]     = useState(false);
   const [dischargeOutput, setDischargeOutput] = useState(null);
   const [selectedCascade, setSelectedCascade] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [patient, setPatient]           = useState(null);
+  const [patientLoading, setPatientLoading] = useState(false);
 
-  const patient = useMemo(
-    () => dischargePatients.find(p => p.id === Number(selectedPatientId)) || null,
-    [selectedPatientId]
-  );
+  const [safetyResult, setSafetyResult] = useState(null);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [safetyError, setSafetyError] = useState(null);
+  const [sideEffectsMap, setSideEffectsMap] = useState({});
 
-  const safetyResult = useMemo(
-    () => (patient ? runSafetyChecks(patient) : null),
-    [patient]
-  );
+  useEffect(() => {
+    if (!patient) {
+      setSafetyResult(null);
+      setSafetyError(null);
+      setSideEffectsMap({});
+      return;
+    }
+
+    setSafetyLoading(true);
+    setSafetyError(null);
+
+    const allMedKeys = [
+      ...patient.continuingMeds.map((m) => m.drug),
+      ...patient.newMeds.map((m) => m.drug),
+    ].join(',');
+
+    Promise.all([
+      fetch('/api/safety/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patient),
+      }).then((r) => {
+        if (!r.ok) throw new Error(`Safety check failed: ${r.status}`);
+        return r.json();
+      }),
+      fetch(`/api/drugs/side-effects?keys=${encodeURIComponent(allMedKeys)}`).then((r) =>
+        r.ok ? r.json() : {}
+      ),
+    ])
+      .then(([safety, sideEffects]) => {
+        setSafetyResult(safety);
+        setSideEffectsMap(sideEffects);
+        setSafetyLoading(false);
+      })
+      .catch((err) => {
+        console.error('Safety check failed:', err);
+        setSafetyError('Could not reach the backend. Make sure the server is running (npm run server).');
+        setSafetyLoading(false);
+      });
+  }, [patient]);
 
   const flaggedMeds = useMemo(() => getFlaggedMeds(safetyResult), [safetyResult]);
 
@@ -66,16 +130,50 @@ const DischargeWorkflow = () => {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handlePatientSelect = (id) => {
+  const injectAcceptedPrescription = (resolvedPatient) => {
+    if (!resolvedPatient) return resolvedPatient;
+    const accepted = acceptedPrescriptions[resolvedPatient.name];
+    if (!accepted) return resolvedPatient;
+
+    const newEntry = {
+      drug: accepted.antibiotic,
+      dose: accepted.dose || 'as prescribed',
+      frequency: 'as prescribed',
+      duration: 'as prescribed',
+      startDate: accepted.date,
+      reason: `Prescribed via RxGuard (${accepted.name || accepted.antibiotic})`,
+      _fromPrescribeTab: true,
+    };
+
+    // Replace any existing entry with the same drug key, otherwise prepend
+    const filtered = (resolvedPatient.newMeds || []).filter(m => m.drug !== accepted.antibiotic);
+    return { ...resolvedPatient, newMeds: [newEntry, ...filtered] };
+  };
+
+  const handlePatientSelect = async (id) => {
     setSelectedPatientId(id);
-    setCurrentStep(id ? 1 : 1);
+    setCurrentStep(1);
     setResolvedAlerts([]);
     setDischargeOutput(null);
     setSelectedCascade(null);
+    setSafetyResult(null);
+
+    if (!id) { setPatient(null); return; }
+
+    // For FHIR patients, fetch full detail and map to discharge schema
+    if (String(id).startsWith('fhir-')) {
+      setPatientLoading(true);
+      const full = await getDischargePatient(id);
+      setPatient(injectAcceptedPrescription(full));
+      setPatientLoading(false);
+    } else {
+      const local = dischargePatientsAll.find(p => p.id === id) || null;
+      setPatient(injectAcceptedPrescription(local));
+    }
   };
 
   const handleRunSafetyCheck = () => {
-    if (!patient) return;
+    if (!patient || safetyLoading) return;
     setCurrentStep(2);
   };
 
@@ -143,24 +241,52 @@ const DischargeWorkflow = () => {
 
       {/* Patient Selector */}
       <div className="card p-5 mb-6 animate-fade-in">
-        <label className="section-title mb-3">
-          <Users className="w-3.5 h-3.5" />
-          Select Discharge Patient
-        </label>
+        <div className="flex items-center justify-between mb-3">
+          <label className="section-title">
+            <Users className="w-3.5 h-3.5" />
+            Select Discharge Patient
+          </label>
+          {patientsLoading && (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <Loader2 className="w-3 h-3 animate-spin" /> Loading FHIR…
+            </span>
+          )}
+        </div>
         <div className="relative">
           <select
             value={selectedPatientId}
             onChange={e => handlePatientSelect(e.target.value)}
+            disabled={patientLoading}
             className="w-full pl-4 pr-10 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium
                        text-gray-900 shadow-card focus:outline-none focus:ring-2 focus:ring-clinical-teal/40
-                       focus:border-clinical-teal transition-all duration-200 cursor-pointer"
+                       focus:border-clinical-teal transition-all duration-200 cursor-pointer
+                       disabled:opacity-60 disabled:cursor-wait"
           >
             <option value="">Choose a patient…</option>
-            {dischargePatients.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} — {p.age}y · {p.demo}
-              </option>
-            ))}
+
+            <optgroup label="── Demo Patients ──">
+              {dischargePatientsAll.filter(p => p._isDemo).map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.age}y · {p.demo}
+                </option>
+              ))}
+            </optgroup>
+
+            {dischargePatientsAll.filter(p => !p._isDemo).length > 0 && (
+              <optgroup label="── Live FHIR Patients ──">
+                {dischargePatientsAll.filter(p => !p._isDemo).map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {p.age}y · {p.demo}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+
+            {patientsLoading && dischargePatientsAll.filter(p => !p._isDemo).length === 0 && (
+              <optgroup label="── Live FHIR Patients ──">
+                <option disabled value="">Loading from FHIR server…</option>
+              </optgroup>
+            )}
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -199,8 +325,24 @@ const DischargeWorkflow = () => {
             )}
           </section>
 
-          {/* ── STEP 2+: SAFETY ALERTS ── */}
-          {currentStep >= 2 && safetyResult && (
+          {/* ── STEP 2+: SAFETY ALERTS — loading / error / results ── */}
+          {currentStep >= 2 && safetyLoading && (
+            <div className="card p-12 text-center animate-fade-in">
+              <Loader2 className="w-10 h-10 animate-spin text-clinical-teal mx-auto mb-4" />
+              <p className="font-semibold text-gray-800">Running safety checks…</p>
+              <p className="text-sm text-gray-500 mt-1">Checking interactions, renal dosing, ADEs, and prescribing cascades.</p>
+            </div>
+          )}
+
+          {currentStep >= 2 && safetyError && !safetyLoading && (
+            <div className="card p-8 text-center border-red-200 animate-fade-in">
+              <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+              <p className="font-semibold text-red-800">Safety check unavailable</p>
+              <p className="text-sm text-red-600 mt-1">{safetyError}</p>
+            </div>
+          )}
+
+          {currentStep >= 2 && safetyResult && !safetyLoading && (
             <section className="space-y-4 mb-6 animate-fade-in">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -356,7 +498,11 @@ const DischargeWorkflow = () => {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {allMeds.map((med, idx) => (
-                      <WatchOutSymptomCard key={idx} medication={med} />
+                      <WatchOutSymptomCard
+                        key={idx}
+                        medication={med}
+                        sideEffects={sideEffectsMap[med.drug]}
+                      />
                     ))}
                   </div>
                 </div>
@@ -380,7 +526,16 @@ const DischargeWorkflow = () => {
       )}
 
       {/* Empty state */}
-      {!patient && (
+      {/* FHIR patient loading spinner */}
+      {patientLoading && (
+        <div className="card p-16 text-center animate-fade-in">
+          <Loader2 className="w-10 h-10 animate-spin text-clinical-teal mx-auto mb-4" />
+          <p className="font-semibold text-gray-800">Loading patient from FHIR…</p>
+          <p className="text-sm text-gray-500 mt-1">Fetching conditions, medications, and lab results.</p>
+        </div>
+      )}
+
+      {!patient && !patientLoading && (
         <div className="card p-16 text-center animate-fade-in">
           <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <ClipboardList className="w-8 h-8 text-gray-300" />

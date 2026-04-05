@@ -1,10 +1,15 @@
 import React from 'react';
-import { drugSideEffects } from '../data/drugSideEffects.js';
 
-const WatchOutSymptomCard = ({ medication }) => {
-  const drugData = drugSideEffects[medication.drug];
-  
-  if (!drugData) {
+/**
+ * Renders watch-out symptom information for a single medication.
+ *
+ * Props:
+ *   medication   — { drug, dose, reason }
+ *   sideEffects  — { class, side_effects: [...] } | undefined
+ *                  Passed from DischargeWorkflow after fetching /api/drugs/side-effects.
+ */
+const WatchOutSymptomCard = ({ medication, sideEffects }) => {
+  if (!sideEffects) {
     return (
       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
         <div className="font-semibold text-gray-800">{medication.drug}</div>
@@ -12,25 +17,26 @@ const WatchOutSymptomCard = ({ medication }) => {
       </div>
     );
   }
-  
-  // Categorize side effects
-  const seriousSideEffects = drugData.side_effects.filter(se => 
-    se.frequency === 'rare' || se.symptom.includes('angioedema') || se.symptom.includes('lactic acidosis')
+
+  const seriousSideEffects = sideEffects.side_effects.filter(
+    (se) =>
+      se.frequency === 'rare' ||
+      se.symptom.includes('angioedema') ||
+      se.symptom.includes('lactic acidosis')
   );
-  
-  const commonSideEffects = drugData.side_effects.filter(se => 
-    se.frequency === 'very_common' || se.frequency === 'common'
+
+  const commonSideEffects = sideEffects.side_effects.filter(
+    (se) => se.frequency === 'very_common' || se.frequency === 'common'
   );
-  
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="bg-clinical-navy text-white p-3">
         <div className="font-semibold">{medication.drug}</div>
         <div className="text-sm opacity-90">{medication.dose} — {medication.reason}</div>
       </div>
-      
+
       <div className="p-4 space-y-4">
-        {/* Serious side effects */}
         <div>
           <h4 className="text-sm font-bold text-red-700 mb-2 flex items-center">
             <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -51,8 +57,7 @@ const WatchOutSymptomCard = ({ medication }) => {
             )}
           </ul>
         </div>
-        
-        {/* Common side effects */}
+
         <div>
           <h4 className="text-sm font-bold text-yellow-700 mb-2 flex items-center">
             <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -69,8 +74,7 @@ const WatchOutSymptomCard = ({ medication }) => {
             ))}
           </ul>
         </div>
-        
-        {/* When to call */}
+
         <div className="bg-blue-50 rounded-lg p-3 text-sm">
           <div className="font-semibold text-blue-800 mb-1">
             📞 When to call your doctor:
