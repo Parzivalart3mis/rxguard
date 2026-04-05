@@ -210,4 +210,37 @@ export const antibioticMetadata = {
   }
 };
 
+// Non-antibiotic drug display names (for Medication Picture & Watch-Out cards)
+const NON_ANTIBIOTIC_NAMES = {
+  metformin:          'Metformin',
+  lisinopril:         'Lisinopril',
+  ibuprofen:          'Ibuprofen',
+  furosemide:         'Furosemide',
+  gabapentin:         'Gabapentin',
+  enoxaparin:         'Enoxaparin',
+  amlodipine:         'Amlodipine',
+  atorvastatin:       'Atorvastatin',
+  metoprolol:         'Metoprolol',
+  omeprazole:         'Omeprazole',
+  sertraline:         'Sertraline',
+  warfarin:           'Warfarin',
+  potassium_chloride: 'Potassium Chloride',
+  birth_control:      'Birth Control (OCP)',
+  clarithromycin:     'Clarithromycin',
+  clopidogrel:        'Clopidogrel',
+  glipizide:          'Glipizide',
+};
+
+/**
+ * Returns a human-readable display name for any internal drug key.
+ * Falls back to title-casing the key if not found.
+ */
+export const getDrugDisplayName = (key) => {
+  if (!key) return key;
+  if (antibioticMetadata[key]) return antibioticMetadata[key].name;
+  if (NON_ANTIBIOTIC_NAMES[key]) return NON_ANTIBIOTIC_NAMES[key];
+  // Fallback: replace underscores with spaces and title-case
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
 export default antibiogram;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import db from '../db/client.js';
-import { checkAllInteractions, checkClassInteractions } from '../services/interactionChecker.js';
+import { checkAllInteractions } from '../services/interactionChecker.js';
 
 const router = Router();
 
@@ -32,7 +32,6 @@ router.post('/interactions/check', (req, res, next) => {
     const drugInteractionsData = loadDrugInteractions();
 
     const interactions = checkAllInteractions(patient, drugInteractionsData);
-    const classAlerts  = checkClassInteractions(patient);
 
     const summary = {
       major:    interactions.filter((i) => i.severity === 'major').length,
@@ -40,7 +39,7 @@ router.post('/interactions/check', (req, res, next) => {
       minor:    interactions.filter((i) => i.severity === 'minor').length,
     };
 
-    res.json({ interactions, classAlerts, summary });
+    res.json({ interactions, summary });
   } catch (err) {
     next(err);
   }

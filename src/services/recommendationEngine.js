@@ -86,9 +86,14 @@ export const checkRecentAntibiotic = (antibiotic, pastAntibiotics) => {
 
 export const getResistanceData = (antibiotic, pathogens) => {
   const results = [];
-  
-  for (const pathogen of pathogens) {
-    const pathogenData = antibiogram.data.find(p => 
+
+  // Support both plain string[] and { pathogen, weight }[] from guidelines.js
+  const normalized = pathogens.map(p =>
+    typeof p === 'string' ? { pathogen: p, weight: 1 } : p
+  );
+
+  for (const { pathogen, weight } of normalized) {
+    const pathogenData = antibiogram.data.find(p =>
       p.pathogen.toLowerCase().includes(pathogen.toLowerCase()) ||
       pathogen.toLowerCase().includes(p.pathogen.toLowerCase().split(' ')[0])
     );
@@ -99,16 +104,30 @@ export const getResistanceData = (antibiotic, pathogens) => {
         pathogen: pathogenData.pathogen,
         susceptibility: data.susceptibility,
         resistance: data.resistance,
-        trend: data.trend
+        trend: data.trend,
+        weight,
       });
     }
   }
 
-  // Return the highest resistance concern
   if (results.length === 0) return null;
-  
-  const worst = results.reduce((max, curr) => curr.resistance > max.resistance ? curr : max);
-  return worst;
+
+  // Prevalence-weighted expected coverage (mirrors server-side engine)
+  const totalWeight = results.reduce((sum, r) => sum + r.weight, 0);
+  const expectedCoverage = Math.round(
+    results.reduce((sum, r) => sum + r.susceptibility * r.weight, 0) / totalWeight
+  );
+  // Worst-case resistance for penalty scoring (kept for rankAlternatives)
+  const worst = results.reduce((max, r) => r.resistance > max.resistance ? r : max);
+
+  return {
+    expectedCoverage,
+    resistance: worst.resistance,
+    susceptibility: worst.susceptibility,
+    pathogen: worst.pathogen,
+    trend: worst.trend,
+    pathogens: results,
+  };
 };
 
 export const rankAlternatives = (condition, patient, excludeAntibiotic = null) => {

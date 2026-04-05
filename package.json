@@ -17,7 +17,7 @@
   "dependencies": {
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "fhirclient": "^2.6.3",
     "react": "^19.2.4",

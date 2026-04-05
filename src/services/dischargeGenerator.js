@@ -3,6 +3,18 @@
 // Calls are proxied through our own backend (/api/ai/groq) so that
 // the Groq API key is never exposed in the browser bundle.
 // All functions fall back to rule-based generators on any error.
+//
+// Grounded generation: the AI is only asked to translate data already in
+// our DB into plain English. It is never asked to reason about drug safety,
+// invent warnings, or add clinical advice beyond what is passed in the prompt.
+// This eliminates the main hallucination surface for a clinical tool.
+//
+// Reading level: 6th grade — per AMA/Joint Commission/AHRQ recommendation
+// for discharge materials. Illness and stress reduce effective reading
+// comprehension by 2–3 grade levels, so a patient who normally reads at
+// 9th grade reads at ~6th grade at discharge.
+
+import { getDrugDisplayName, antibioticMetadata } from '../data/antibiogram.js';
 
 const GROQ_API_URL = '/api/ai/groq';
 
@@ -22,75 +34,172 @@ const callGroq = async (payload) => {
   return data.choices[0].message.content;
 };
 
+// ── Data helpers ──────────────────────────────────────────────────────────────
+
 /**
- * Generate simplified medication instructions
+ * Builds a structured clinical data block for a single medication.
+ * This is what gets passed to the AI — not free-form drug knowledge.
  */
-export const generateMedicationInstructions = async (patient) => {
+const buildMedDataBlock = (med, sideEffectsMap, patientEgfr) => {
+  const displayName = getDrugDisplayName(med.drug);
+  const sideEffects = sideEffectsMap?.[med.drug];
+  const meta = antibioticMetadata[med.drug];
+
+  const commonEffects = sideEffects?.side_effects
+    .filter(se => se.frequency === 'very_common' || se.frequency === 'common')
+    .slice(0, 3)
+    .map(se => `${se.description}${se.pct != null ? ` (affects ~${se.pct}% of people)` : ''}`)
+    ?? [];
+
+  const rareEffects = sideEffects?.side_effects
+    .filter(se => se.frequency === 'rare')
+    .slice(0, 3)
+    .map(se => se.description)
+    ?? [];
+
+  const needsRenalWarning = meta?.renalAdjustment && patientEgfr != null && patientEgfr < 60;
+
+  const lines = [
+    `Drug: ${displayName}`,
+    `Purpose: ${med.reason}`,
+    `Dose: ${med.dose}`,
+    `Frequency: ${med.frequency}`,
+  ];
+
+  if (med.duration) lines.push(`Duration: ${med.duration}`);
+
+  if (commonEffects.length > 0) {
+    lines.push(`Common side effects (usually resolve on their own): ${commonEffects.join('; ')}`);
+  }
+
+  if (rareEffects.length > 0) {
+    lines.push(`Rare but serious effects (call doctor or go to ER): ${rareEffects.join('; ')}`);
+  }
+
+  if (needsRenalWarning) {
+    lines.push(`Kidney note: dose may need adjustment — patient eGFR is ${patientEgfr}`);
+  }
+
+  return lines.join('\n');
+};
+
+// ── Grounded prompts ──────────────────────────────────────────────────────────
+
+const TRANSLATION_RULES = `
+Translation rules (follow exactly):
+- Replace ALL medical terms: "renal" → "kidney", "hypertension" → "high blood pressure", "tachycardia" → "fast heartbeat", "edema" → "swelling", "nausea" → "upset stomach or feeling sick", "diarrhea" → "loose stools or diarrhea", "hepatic" → "liver"
+- Use body-sensation language: "your ankles get puffy" not "peripheral edema", "you feel your heart racing" not "tachycardia"
+- Short sentences only — one idea per sentence
+- No hedge phrases like "consult your doctor before" or "as always" unless that specific action is listed in the data
+- Do NOT add any warnings, drug interactions, food restrictions, or advice that is not explicitly listed in the data block above
+- If a data field is missing, omit it — do not invent a substitute`.trim();
+
+/**
+ * Generate simplified medication instructions — grounded in DB data only.
+ * @param {object} patient
+ * @param {object} sideEffectsMap  — from /api/drugs/side-effects, keyed by drug key
+ */
+export const generateMedicationInstructions = async (patient, sideEffectsMap = {}) => {
   const allMeds = [...patient.continuingMeds, ...patient.newMeds];
+  const egfr = patient.labs?.egfr;
 
-  const prompt = `You are writing discharge medication instructions for a patient.
-The patient has no medical background. Write at a 6th-grade reading level.
-For each medication, provide:
-1. Drug name (brand and generic) and what it's for (in simple terms)
-2. How to take it (dose, frequency, with/without food, time of day)
-3. Important warnings in one sentence
-4. What to do if you miss a dose
+  const medBlocks = allMeds
+    .map((med, i) => `--- Medication ${i + 1} ---\n${buildMedDataBlock(med, sideEffectsMap, egfr)}`)
+    .join('\n\n');
 
-Patient: ${patient.name}, ${patient.age} years old
-Allergies: ${patient.allergies.map(a => a.substance).join(', ') || 'None'}
+  const prompt = `You are rewriting clinical medication data into patient-friendly discharge instructions.
+Reading level: 6th grade (short words, short sentences).
+Patient: ${patient.name}, ${patient.age} years old.
+${patient.allergies?.length > 0 ? `Known allergies: ${patient.allergies.map(a => a.substance).join(', ')}` : ''}
 
-Medications:
-${allMeds.map(med => `- ${med.drug} ${med.dose} ${med.frequency} (${med.reason})`).join('\n')}
+IMPORTANT: Use ONLY the facts in the data blocks below. Do not add any information that is not listed.
+${TRANSLATION_RULES}
 
-Format as a clean, numbered list. No medical jargon.
-Use language like "blood pressure pill" not "antihypertensive."`;
+${medBlocks}
+
+Format as a numbered list. Generate an entry for EACH medication listed above — no more, no fewer. Never write "(None listed)" or placeholder text. If a data field is absent for a medication, simply omit that line.
+
+For each medication:
+1. **Drug name** — what it is for (one sentence)
+2. How to take it (dose, how often, how long if listed)
+3. Side effects to watch for (only if listed in the data — split into "Usually fine:" and "Call doctor if:")
+4. Missed dose: take it as soon as you remember unless it is almost time for the next dose — never double up
+
+End with one short reminder to finish the full course for any antibiotics listed.`;
 
   try {
     return await callGroq({
       model: 'llama-3.1-8b-instant',
-      max_tokens: 800,
-      temperature: 0.3,
+      max_tokens: 1200,
+      temperature: 0.2,
       messages: [{ role: 'user', content: prompt }],
     });
   } catch (error) {
     console.error('Discharge instructions error:', error);
-    return generateFallbackInstructions(patient, allMeds);
+    return generateFallbackInstructions(patient, allMeds, sideEffectsMap);
   }
 };
 
 /**
- * Generate follow-up action items
+ * Generate follow-up action items — grounded in safety alerts and actual lab values.
+ * @param {object} patient
+ * @param {Array}  safetyAlerts  — allAlerts from safetyEngine
  */
 export const generateFollowUpActions = async (patient, safetyAlerts) => {
-  const prompt = `Generate follow-up action items for a patient being discharged.
+  const allMeds = [...patient.continuingMeds, ...patient.newMeds];
+  const antibiotics = allMeds.filter(m => antibioticMetadata[m.drug]);
+  const egfr = patient.labs?.egfr;
+  const potassium = patient.labs?.potassium;
 
-Patient: ${patient.name}, ${patient.age} years old
-Conditions: ${patient.conditions.join(', ')}
-eGFR: ${patient.labs.egfr} mL/min
+  // Build a structured data block — AI only reformats this, never adds to it
+  const alertActions = safetyAlerts
+    .filter(a => a.action)
+    .map(a => `- ${a.title}: ${a.action}`)
+    .join('\n') || '- No safety concerns flagged';
 
-Active symptoms: ${patient.symptoms.map(s => s.symptom).join(', ')}
+  const labContext = [
+    egfr != null ? `eGFR: ${egfr} mL/min${egfr < 60 ? ' (reduced kidney function — monitor)' : ''}` : null,
+    potassium != null ? `Potassium: ${potassium} mEq/L${(potassium < 3.5 || potassium > 5.0) ? ' (out of normal range — recheck)' : ''}` : null,
+    patient.labs?.creatinine != null ? `Creatinine: ${patient.labs.creatinine}` : null,
+  ].filter(Boolean).join('\n');
 
-Safety concerns identified:
-${safetyAlerts.map(a => `- ${a.title}: ${a.action}`).join('\n')}
+  const antibiotiCourses = antibiotics.length > 0
+    ? antibiotics.map(m => `- ${getDrugDisplayName(m.drug)}: ${m.duration || 'finish full course'}`).join('\n')
+    : null;
 
-Create two sections:
-FOR YOU (patient actions):
-- Checklist items the patient should do
-- Include medication-related actions
-- Include follow-up appointments needed
+  const prompt = `You are writing discharge follow-up action items for a patient.
+Reading level: 6th grade.
+Patient: ${patient.name}, ${patient.age} years old.
+Conditions: ${patient.conditions?.join(', ') || 'not specified'}
 
-FOR YOUR DOCTOR (provider follow-up):
-- Lab monitoring needed
-- Medication adjustments to consider
-- When to reassess therapy
+IMPORTANT: Use ONLY the data below. Do not add recommendations, lab timelines, or referrals not listed here.
+${TRANSLATION_RULES}
 
-Use checkbox format (☐). Be specific and actionable.`;
+Lab values at discharge:
+${labContext || '- Not available'}
+
+Safety concerns to address (from clinical review):
+${alertActions}
+
+${antibiotiCourses ? `Antibiotic courses to complete:\n${antibiotiCourses}` : ''}
+
+Symptoms at discharge: ${patient.symptoms?.map(s => s.symptom).join(', ') || 'none listed'}
+
+Write two sections using checkbox format (☐):
+
+FOR YOU — Patient actions:
+(medication reminders, finish antibiotic courses if any, symptoms to watch for based only on the listed safety concerns)
+
+FOR YOUR DOCTOR — Provider follow-up:
+(lab monitoring based only on the lab values and safety concerns listed above, medication adjustments listed in the safety actions)
+
+Keep each item to one line. Be specific using the actual values given (e.g. "your eGFR was 42" not "your kidney function").`;
 
   try {
     return await callGroq({
       model: 'llama-3.1-8b-instant',
-      max_tokens: 600,
-      temperature: 0.3,
+      max_tokens: 700,
+      temperature: 0.2,
       messages: [{ role: 'user', content: prompt }],
     });
   } catch (error) {
@@ -99,50 +208,9 @@ Use checkbox format (☐). Be specific and actionable.`;
   }
 };
 
-/**
- * Generate ADE warning cards
- */
-export const generateADECards = async (patient, adeAlerts) => {
-  if (adeAlerts.length === 0) {
-    return generateFallbackADECards(patient, adeAlerts);
-  }
+// ── Fallback generators (rule-based, used when Groq is unavailable) ───────────
 
-  const prompt = `For each of the following medications with potential side effects, generate a "Watch-Out Card".
-Split symptoms into two groups:
-
-🔴 CALL YOUR DOCTOR OR GO TO THE ER IF:
-(serious but rare side effects)
-
-🟡 THESE MAY HAPPEN AND USUALLY GO AWAY:
-(common, expected side effects)
-
-Write at a 6th-grade reading level. Use body-sensation language:
-"your ankles get puffy" not "peripheral edema"
-"you feel your heart racing" not "tachycardia"
-
-Patient: ${patient.age} years old, eGFR ${patient.labs.egfr}
-
-Potential drug-symptom associations:
-${adeAlerts.map(a => `- ${a.topMatch.drug}: ${a.topMatch.sideEffect.description} (${a.topMatch.score}% probability)`).join('\n')}
-
-Format clearly with emojis and bullet points.`;
-
-  try {
-    return await callGroq({
-      model: 'llama-3.1-8b-instant',
-      max_tokens: 600,
-      temperature: 0.3,
-      messages: [{ role: 'user', content: prompt }],
-    });
-  } catch (error) {
-    console.error('ADE cards error:', error);
-    return generateFallbackADECards(patient, adeAlerts);
-  }
-};
-
-// ── fallback generators ───────────────────────────────────────────────────────
-
-const generateFallbackInstructions = (patient, meds) => {
+const generateFallbackInstructions = (patient, meds, sideEffectsMap = {}) => {
   const lines = [
     `DISCHARGE MEDICATIONS FOR ${patient.name.toUpperCase()}`,
     '',
@@ -151,89 +219,62 @@ const generateFallbackInstructions = (patient, meds) => {
   ];
 
   meds.forEach((med, idx) => {
-    const simpleName = getSimpleDrugName(med.drug);
-    lines.push(`${idx + 1}. ${med.drug.toUpperCase()} ${med.dose}`);
-    lines.push(`   What it's for: ${simpleName}`);
-    lines.push(`   How to take: ${med.frequency}`);
-    lines.push(`   ${med.duration ? `Take for ${med.duration}. ` : ''}Take with food if stomach upset.`);
-    lines.push(`   ⚠️ Do not stop taking without talking to your doctor.`);
+    const displayName = getDrugDisplayName(med.drug);
+    const sideEffects = sideEffectsMap[med.drug];
+    const common = sideEffects?.side_effects
+      .filter(se => se.frequency === 'very_common' || se.frequency === 'common')
+      .slice(0, 2)
+      .map(se => se.description) ?? [];
+    const serious = sideEffects?.side_effects
+      .filter(se => se.frequency === 'rare')
+      .slice(0, 2)
+      .map(se => se.description) ?? [];
+
+    lines.push(`${idx + 1}. ${displayName} ${med.dose}`);
+    lines.push(`   What it is for: ${med.reason}`);
+    lines.push(`   How to take: ${med.frequency}${med.duration ? `, for ${med.duration}` : ''}`);
+    if (common.length > 0) lines.push(`   May happen: ${common.join(', ')}`);
+    if (serious.length > 0) lines.push(`   Call your doctor or go to ER if: ${serious.join(', ')}`);
+    lines.push(`   Missed dose: Take it as soon as you remember, unless it is almost time for the next dose. Never double up.`);
     lines.push('');
   });
 
-  lines.push('If you miss a dose:');
-  lines.push('- Take it as soon as you remember, unless it is almost time for your next dose');
-  lines.push('- Never double up on doses');
-  lines.push('');
-  lines.push('Call your doctor if you have questions or concerns.');
+  const abx = meds.filter(m => antibioticMetadata[m.drug]);
+  if (abx.length > 0) {
+    lines.push(`Finish the full course of your antibiotic${abx.length > 1 ? 's' : ''} even if you feel better.`);
+  }
 
   return lines.join('\n');
 };
 
 const generateFallbackFollowUp = (patient, safetyAlerts) => {
-  const lines = [
-    'FOLLOW-UP ACTIONS',
-    '',
-    'FOR YOU:',
-    '☐ Schedule follow-up appointment within 2 weeks',
-    '☐ Take all medications as prescribed',
-    '',
-  ];
+  const lines = ['FOLLOW-UP ACTIONS', '', 'FOR YOU:', '☐ Schedule a follow-up appointment within 2 weeks', '☐ Take all medications as prescribed', ''];
 
-  if (patient.labs.egfr < 60) {
-    lines.push('☐ Get blood work in 7 days (kidney function and potassium)');
-  }
-
-  if (safetyAlerts.some(a => a.type === 'ade')) {
-    lines.push('☐ Watch for side effects and report any concerns');
-  }
-
-  lines.push('');
-  lines.push('FOR YOUR DOCTOR:');
-
-  safetyAlerts.forEach(alert => {
-    lines.push(`☐ ${alert.action}`);
+  const allMeds = [...patient.continuingMeds, ...patient.newMeds];
+  const abx = allMeds.filter(m => antibioticMetadata[m.drug]);
+  abx.forEach(m => {
+    lines.push(`☐ Finish your full course of ${getDrugDisplayName(m.drug)}${m.duration ? ` (${m.duration})` : ''}`);
   });
 
-  return lines.join('\n');
-};
+  if (patient.labs?.egfr != null && patient.labs.egfr < 60) {
+    lines.push(`☐ Get your kidney function (eGFR) checked — your level was ${patient.labs.egfr} at discharge`);
+  }
+  if (patient.labs?.potassium != null && (patient.labs.potassium < 3.5 || patient.labs.potassium > 5.0)) {
+    lines.push(`☐ Get your potassium level rechecked — your level was ${patient.labs.potassium} at discharge`);
+  }
 
-const generateFallbackADECards = (_patient, adeAlerts) => {
-  if (adeAlerts.length === 0) return 'No adverse drug events detected.';
-
-  const lines = ['WATCH-OUT SYMPTOMS:\n'];
-
-  adeAlerts.forEach(alert => {
-    lines.push(`${alert.topMatch.drug.toUpperCase()}:`);
-    lines.push(`🔴 Call doctor if: ${alert.topMatch.sideEffect.description} is severe`);
-    lines.push(`🟡 Common: ${alert.topMatch.sideEffect.description} affects ${alert.topMatch.sideEffect.pct}% of people`);
+  if (safetyAlerts?.length > 0) {
     lines.push('');
-  });
+    lines.push('FOR YOUR DOCTOR:');
+    safetyAlerts.forEach(alert => {
+      if (alert.action) lines.push(`☐ ${alert.action}`);
+    });
+  }
 
   return lines.join('\n');
-};
-
-const getSimpleDrugName = (drug) => {
-  const mappings = {
-    lisinopril:         'Blood pressure pill',
-    amlodipine:         'Blood pressure pill',
-    metoprolol:         'Blood pressure pill',
-    metformin:          'Diabetes pill',
-    atorvastatin:       'Cholesterol pill',
-    omeprazole:         'Heartburn pill',
-    sertraline:         'Mood pill',
-    furosemide:         'Water pill',
-    warfarin:           'Blood thinner',
-    amoxicillin:        'Antibiotic',
-    azithromycin:       'Antibiotic',
-    nitrofurantoin:     'Antibiotic',
-    ibuprofen:          'Pain pill',
-    potassium_chloride: 'Potassium supplement',
-  };
-  return mappings[drug] || drug;
 };
 
 export default {
   generateMedicationInstructions,
   generateFollowUpActions,
-  generateADECards,
 };

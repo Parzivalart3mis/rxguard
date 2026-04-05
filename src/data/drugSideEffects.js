@@ -152,6 +152,19 @@ export const drugSideEffects = {
       { symptom: "breast tenderness", frequency: "common", pct: 5, onset: "days", description: "tender breasts" }
     ],
     renal_dosing: null
+  },
+  fosfomycin: {
+    class: "Phosphonic Antibiotic",
+    side_effects: [
+      { symptom: "diarrhea", frequency: "very_common", pct: 10, onset: "hours-days", description: "loose stools after the dose" },
+      { symptom: "nausea", frequency: "common", pct: 5, onset: "hours", description: "feeling sick to stomach" },
+      { symptom: "headache", frequency: "common", pct: 4, onset: "hours-days", description: "headache" },
+      { symptom: "vaginitis", frequency: "common", pct: 5, onset: "days", description: "vaginal irritation or discharge" },
+      { symptom: "dizziness", frequency: "uncommon", pct: 1, onset: "hours", description: "feeling lightheaded" },
+      { symptom: "back pain", frequency: "uncommon", pct: 1, onset: "days", description: "lower back discomfort" },
+      { symptom: "dysuria", frequency: "uncommon", pct: 1, onset: "days", description: "burning or pain on urination" }
+    ],
+    renal_dosing: null
   }
 };
 

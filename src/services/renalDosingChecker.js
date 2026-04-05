@@ -21,12 +21,16 @@ export const checkRenalDosing = (patient) => {
           drugClass: rules.class,
           dose: med.dose,
           frequency: med.frequency,
+          duration: med.duration,
           currentEGFR: patient.labs.egfr,
           threshold: requirement.egfr_threshold,
           action: requirement.action,
           message: requirement.message,
           severity: requirement.severity,
           reason: med.reason,
+          recommended_drug: requirement.recommended_drug || null,
+          recommended_dose: requirement.recommended_dose || null,
+          recommended_frequency: requirement.recommended_frequency || null,
           type: 'renal_dosing'
         });
         break; // Only report the most severe threshold met

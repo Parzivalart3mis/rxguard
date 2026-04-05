@@ -6,7 +6,7 @@
  */
 
 import db from '../db/client.js';
-import { checkAllInteractions, checkClassInteractions } from './interactionChecker.js';
+import { checkAllInteractions } from './interactionChecker.js';
 import { checkRenalDosing, checkAKIRisk, formatRenalAlert } from './renalDosingChecker.js';
 import { detectADEs } from './adeDetectionEngine.js';
 import { detectCascades, analyzeCascade } from './cascadeDetector.js';
@@ -26,6 +26,21 @@ function loadDrugInteractions() {
       action:    r.action,
     }));
 }
+
+// Structured recommendations keyed by "drug_egfrThreshold".
+// Overlaid onto DB rows so no schema migration is needed.
+const RENAL_RECOMMENDATIONS = {
+  'metformin_30':       { recommended_drug: 'insulin glargine',              recommended_dose: '10 units',    recommended_frequency: 'once daily at bedtime' },
+  'metformin_45':       { recommended_drug: 'metformin',                     recommended_dose: '500mg',       recommended_frequency: 'twice daily' },
+  'nitrofurantoin_30':  { recommended_drug: 'trimethoprim-sulfamethoxazole', recommended_dose: '80/400mg',    recommended_frequency: 'twice daily' },
+  'amoxicillin_30':     { recommended_drug: 'amoxicillin',                   recommended_dose: '500mg',       recommended_frequency: 'every 12–24 hours' },
+  'lisinopril_30':      { recommended_drug: 'lisinopril',                    recommended_dose: '5mg',         recommended_frequency: 'once daily' },
+  'ibuprofen_30':       { recommended_drug: 'acetaminophen',                 recommended_dose: '500mg',       recommended_frequency: 'every 6 hours as needed' },
+  'ibuprofen_60':       { recommended_drug: 'ibuprofen',                     recommended_dose: '400mg',       recommended_frequency: 'every 8 hours with food' },
+  'furosemide_30':      { recommended_drug: 'furosemide',                    recommended_dose: '80mg',        recommended_frequency: 'twice daily' },
+  'gabapentin_30':      { recommended_drug: 'gabapentin',                    recommended_dose: '100–300mg',   recommended_frequency: 'once daily or every 12 hours' },
+  'enoxaparin_30':      { recommended_drug: 'unfractionated heparin',        recommended_dose: '5000 units',  recommended_frequency: 'every 8–12 hours subcutaneous' },
+};
 
 function loadRenalDosingRules() {
   const rows = db
@@ -47,11 +62,15 @@ function loadRenalDosingRules() {
         requirements: [],
       };
     }
+    const rec = RENAL_RECOMMENDATIONS[`${row.drug_key}_${row.egfr_threshold}`] || {};
     rules[row.drug_key].requirements.push({
-      egfr_threshold: row.egfr_threshold,
-      action:         row.action,
-      message:        row.message,
-      severity:       row.severity,
+      egfr_threshold:       row.egfr_threshold,
+      action:               row.action,
+      message:              row.message,
+      severity:             row.severity,
+      recommended_drug:     rec.recommended_drug     || null,
+      recommended_dose:     rec.recommended_dose     || null,
+      recommended_frequency: rec.recommended_frequency || null,
     });
   }
   return rules;
@@ -152,11 +171,11 @@ export const runSafetyChecks = (patient) => {
     });
   }
 
-  // 3. Drug-Drug Interactions
+  // 3. Drug-Drug Interactions (data-driven from DB — seeded + RxNav)
   const interactions = checkAllInteractions(patient, drugInteractionsData);
   for (const interaction of interactions) {
-    const isNew     = interaction.hasNewDrug;
-    const severity  =
+    const isNew    = interaction.hasNewDrug;
+    const severity =
       interaction.severity === 'major' ? 'critical' :
       interaction.severity === 'moderate' && isNew ? 'major' :
       interaction.severity;
@@ -169,19 +188,6 @@ export const runSafetyChecks = (patient) => {
       details:           interaction,
       action:            interaction.action,
       isNewDrugInvolved: isNew,
-    });
-  }
-
-  // 4. Class-based Interactions
-  const classAlerts = checkClassInteractions(patient);
-  for (const alert of classAlerts) {
-    addToSeverityBucket(alerts, {
-      type:        'class_interaction',
-      severity:    alert.severity,
-      title:       alert.title,
-      description: alert.description,
-      action:      alert.action,
-      medications: alert.medications,
     });
   }
 
@@ -215,7 +221,7 @@ export const runSafetyChecks = (patient) => {
 
   const stats = {
     total:    adeAlerts.length + cascades.length + interactions.length +
-              classAlerts.length + renalAlerts.length + akiRisks.length,
+              renalAlerts.length + akiRisks.length,
     critical: alerts.critical.length,
     major:    alerts.major.length,
     moderate: alerts.moderate.length,

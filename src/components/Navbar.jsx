@@ -1,63 +1,97 @@
-import { Shield, LayoutDashboard, FlaskConical, ClipboardList, User } from 'lucide-react';
+import { Sun, Moon, User, Menu } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext.jsx';
+import { usePatientContext } from '../contexts/PatientContext.jsx';
 
-const Navbar = ({ activeTab, onTabChange }) => {
+const Navbar = ({ pageTitle, pageSub, onMenuClick }) => {
+  const { theme, toggleTheme } = useTheme();
+  const { activeDisplay } = usePatientContext();
+
   return (
-    <nav className="sticky top-0 z-50 bg-clinical-navy shadow-lg">
-      {/* top accent line */}
+    <header className="flex-shrink-0 sticky top-0 z-30">
+      {/* Accent line */}
       <div className="h-0.5 bg-gradient-to-r from-clinical-teal via-cyan-400 to-clinical-teal" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-4">
 
-          {/* Logo */}
-          <div className="flex items-center gap-2.5 select-none">
-            <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-clinical-teal" />
+        {/* Mobile sidebar toggle */}
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400
+                     hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu className="w-4.5 h-4.5" style={{ width: '1.125rem', height: '1.125rem' }} />
+        </button>
+
+        {/* Page title */}
+        <div className="flex-1 min-w-0">
+          {pageTitle && (
+            <div className="flex items-baseline gap-2.5 min-w-0">
+              <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate leading-tight">
+                {pageTitle}
+              </h1>
+              {pageSub && (
+                <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline truncate">
+                  {pageSub}
+                </span>
+              )}
             </div>
-            <div>
-              <span className="text-xl font-bold text-white tracking-tight">RxGuard</span>
-              <span className="hidden sm:inline ml-2 text-xs text-white/50 font-medium">Stewardship AI</span>
+          )}
+        </div>
+
+        {/* Right side controls */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+
+          {/* Active patient chip — visible on sm+ */}
+          {activeDisplay && (
+            <div className="hidden sm:flex items-center gap-2 bg-clinical-teal/8 dark:bg-clinical-teal/15
+                            border border-clinical-teal/20 dark:border-clinical-teal/30
+                            rounded-lg px-2.5 py-1.5 mr-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-clinical-teal flex-shrink-0 animate-pulse" />
+              <span className="text-xs font-semibold text-clinical-teal truncate max-w-[140px]">
+                {activeDisplay.name}
+              </span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                {activeDisplay.age}y
+              </span>
             </div>
-          </div>
+          )}
 
-          {/* Nav tabs */}
-          <div className="flex items-center gap-1 bg-white/10 border border-white/20 rounded-xl p-1">
-            {[
-              { id: 'prescribe',  label: 'Prescribe',  icon: <FlaskConical className="w-3.5 h-3.5" /> },
-              { id: 'discharge',  label: 'Discharge',  icon: <ClipboardList className="w-3.5 h-3.5" /> },
-              { id: 'dashboard',  label: 'Dashboard',  icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
-            ].map(({ id, label, icon }) => (
-              <button
-                key={id}
-                onClick={() => onTabChange(id)}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === id
-                    ? 'bg-clinical-teal text-white shadow-md'
-                    : 'text-white/90 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Theme toggle — sun/moon only */}
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="w-8 h-8 flex items-center justify-center rounded-lg
+                       text-gray-500 dark:text-gray-400
+                       hover:text-gray-800 dark:hover:text-gray-100
+                       hover:bg-gray-100 dark:hover:bg-gray-800
+                       transition-all duration-200"
+          >
+            {theme === 'dark'
+              ? <Sun className="w-4 h-4" />
+              : <Moon className="w-4 h-4" />
+            }
+          </button>
 
-          {/* User */}
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-white leading-tight">Dr. Sarah Martinez</p>
-              <p className="text-xs text-white/50">Internal Medicine</p>
+          {/* Divider */}
+          <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+
+          {/* User avatar */}
+          <div className="flex items-center gap-2.5 pl-1">
+            <div className="hidden sm:block text-right">
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">Dr. K. Patel</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">Internal Medicine</p>
             </div>
             <div className="relative">
-              <div className="w-9 h-9 bg-clinical-teal rounded-full flex items-center justify-center shadow-md">
+              <div className="w-8 h-8 bg-clinical-teal rounded-full flex items-center justify-center shadow-sm">
                 <User className="w-4 h-4 text-white" />
               </div>
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full ring-2 ring-clinical-navy" />
+              <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full ring-2 ring-white dark:ring-gray-900" />
             </div>
           </div>
         </div>
       </div>
-    </nav>
+    </header>
   );
 };
 
