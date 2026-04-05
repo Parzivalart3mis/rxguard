@@ -15,6 +15,9 @@ RxGuard is a clinical decision-support tool that helps physicians make safer, ev
 | Charts | Recharts |
 | Icons | Lucide React |
 | AI | Groq API (`llama-3.1-8b-instant`) |
+| Backend | Express.js 4 |
+| Database | SQLite (`better-sqlite3`) |
+| FHIR | `fhirclient` 2.6 |
 
 ---
 
@@ -28,25 +31,53 @@ npm install
 
 ### 2. Set up environment variables
 
-Copy `env.example` to `.env.local` and add your Groq API key:
+Copy `env.example` to `.env` and fill in the values:
 
 ```bash
-cp env.example .env.local
+cp env.example .env
 ```
 
 ```env
-VITE_GROQ_API_KEY=your_groq_api_key_here
+# Server-side Groq key (never exposed to the browser)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Set to true to route AI/safety calls through the Express backend
+VITE_USE_BACKEND=true
+
+# FHIR server (defaults to public Synthea/HAPI sandbox)
+FHIR_BASE_URL=https://hapi.fhir.org/baseR4
+FHIR_AUTH_TOKEN=            # optional — required for Epic/Cerner sandboxes
+FHIR_PATIENT_COUNT=20
+
+# Set to true to display the FHIR data source badge in the UI
+VITE_FHIR_SHOW_SOURCE=false
 ```
 
-Get a free API key at [console.groq.com/keys](https://console.groq.com/keys).
+Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys).
 
 > The app works without a key — all AI features fall back to rule-based explanations automatically.
 
-### 3. Run the development server
+### 3. Seed the database
+
+```bash
+npm run seed
+```
+
+### 4. Run the development server
+
+**Frontend only** (synthetic data, no backend required):
 
 ```bash
 npm run dev
 ```
+
+**Full stack** (backend + frontend, required for FHIR and server-side AI):
+
+```bash
+npm run dev:full
+```
+
+The Express API server starts on port 3001. The Vite dev server on port 5173 proxies `/api/*` to it automatically.
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
@@ -66,17 +97,18 @@ The primary workflow for antibiotic selection. Select a patient to activate all 
 
 #### Feature 1 — Patient Selector
 
-Provides 10 synthetic patient cases covering a range of clinical scenarios:
+Provides 11 synthetic patient cases covering a range of clinical scenarios. When the backend is enabled, the selector also offers live **FHIR patients** fetched from the configured FHIR R4 server.
 
 | Patient | Scenario |
 |---|---|
+| Emma Thompson | Strep pharyngitis — high Centor score (4/5) |
 | John Miller | Viral pharyngitis (no antibiotics needed) |
 | Sarah Chen | Uncomplicated UTI |
 | Robert Johnson | Community-acquired pneumonia |
 | Emily Davis | Acute otitis media (pediatric) |
 | Michael Brown | Viral URI (no antibiotics needed) |
-| Lisa Garcia | Strep pharyngitis — Centor score 4 |
-| James Wilson | Complicated UTI with comorbidities |
+| Lisa Garcia | Strep pharyngitis — Centor score 4, on Warfarin |
+| James Wilson | Complicated UTI with comorbidities, on Glipizide |
 | Anna Kowalski | Viral sinusitis — early stage |
 | David Lee | Cellulitis |
 | Maria Santos | Possible bacterial sinusitis — biphasic illness |
@@ -94,6 +126,8 @@ Displays structured clinical data for the selected patient including:
 - Current medications
 - Recent antibiotic history
 
+When a patient is loaded from the FHIR server, the card pulls live data from FHIR R4 resources (Patient, Condition, Observation, AllergyIntolerance, MedicationRequest).
+
 ---
 
 #### Feature 3 — Bacterial Probability Gauge
@@ -109,7 +143,7 @@ Calculates the probability that the current presentation is bacterial (rather th
 | **Sinusitis Algorithm** | Acute bacterial vs. viral sinusitis |
 | **Cellulitis Assessment** | Skin and soft tissue infections |
 
-The gauge displays a percentage probability, the scoring method used, and key contributing clinical indicators (e.g. fever, WBC, procalcitonin, Centor criteria).
+The gauge displays a percentage probability, the scoring method used, and key contributing clinical indicators (e.g. fever, WBC, procalcitonin, Centor criteria). All algorithms support both LOINC-coded observations (FHIR data) and display-name matching (synthetic data).
 
 **AI explanation (Groq):** After calculating the score, the system calls `llama-3.1-8b-instant` to generate a 2–3 sentence clinical narrative explaining why that probability was assigned, citing specific lab values and observations from the patient record. Falls back to a rule-based explanation if no API key is configured.
 
@@ -308,7 +342,7 @@ Visualises prescribing behaviour and stewardship metrics across the department:
 
 ## AI Features Summary
 
-All AI features use `llama-3.1-8b-instant` via the Groq API. Every AI call has a graceful rule-based fallback if the API key is absent or the request fails.
+All AI features use `llama-3.1-8b-instant` via the Groq API. Every AI call has a graceful rule-based fallback if the API key is absent or the request fails. When `VITE_USE_BACKEND=true`, AI calls are proxied through the Express server so the key is never exposed in the browser bundle.
 
 | Feature | Trigger | Model Output |
 |---|---|---|
@@ -320,50 +354,177 @@ All AI features use `llama-3.1-8b-instant` via the Groq API. Every AI call has a
 
 ---
 
+## FHIR R4 Integration
+
+When `VITE_USE_BACKEND=true`, the backend exposes a FHIR proxy that can pull real patient data from any FHIR R4 server and map it into RxGuard's internal schema.
+
+### How it works
+
+1. The Express server fetches FHIR resources from `FHIR_BASE_URL` (default: public HAPI/Synthea sandbox).
+2. `fhirMapper.js` normalises the raw FHIR bundles:
+   - Maps SNOMED CT codes to ICD-10 for the scoring engine
+   - Extracts LOINC-coded observations (WBC, CRP, procalcitonin, eGFR, …)
+   - Normalises antibiotic history from `MedicationRequest` resources
+3. The mapped patients appear alongside the synthetic cases in the Patient Selector dropdown.
+
+### FHIR Resources fetched
+
+| Resource | Used for |
+|---|---|
+| `Patient` | Demographics (name, birth date, gender) |
+| `Condition` | Active diagnoses mapped to ICD-10 |
+| `Observation` | Labs and vitals with LOINC codes |
+| `AllergyIntolerance` | Documented allergies + criticality |
+| `MedicationRequest` | Active and historical medications |
+
+### FHIR API endpoints (backend)
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/fhir/status` | Health check — confirms FHIR server reachability |
+| `GET /api/fhir/patients` | Returns a list of available FHIR patients |
+| `GET /api/fhir/patients/:id` | Returns full mapped patient data for one patient |
+
+### Connecting to Epic / Cerner sandboxes
+
+Set `FHIR_BASE_URL` to the sandbox base URL and provide a bearer token in `FHIR_AUTH_TOKEN`. The backend attaches the token to all outbound FHIR requests.
+
+---
+
+## Backend API
+
+The Express server (`server/index.js`) runs on port 3001 and is proxied by Vite during development.
+
+| Route prefix | Purpose |
+|---|---|
+| `POST /api/safety/check` | Run all 6 discharge safety checks for a patient |
+| `GET/POST /api/interactions` | Query the drug-interaction database |
+| `GET/POST /api/renalDosing` | Renal dosing alert lookup |
+| `POST /api/ai/groq` | Server-side Groq proxy (keeps API key out of browser) |
+| `GET /api/drugs` | Drug registry — list or search by name |
+| `POST /api/recommendations` | Antibiotic recommendation for a patient + condition |
+| `GET /api/antibiogram` | Facility resistance rates |
+| `GET /api/fhir/*` | FHIR patient integration (see above) |
+
+---
+
+## Database
+
+RxGuard uses a local SQLite file (`rxguard.db`) via `better-sqlite3`.
+
+| Table | Contents |
+|---|---|
+| `drugs` | Drug registry with RxNorm CUI, spectrum, dosing, cross-reactivity groups |
+| `drug_interactions` | ~40 documented interaction pairs with severity and mechanism |
+| `renal_dosing_rules` | Per-drug dose adjustments by eGFR threshold |
+| `drug_side_effects` | Symptom profiles used by the ADE detection engine |
+| `cascade_patterns` | Known prescribing cascade chains |
+| `guidelines` | First-line treatment guidelines per condition |
+| `antibiogram_data` | Facility-level resistance rates (pathogen × drug) |
+| `antibiogram_history` | Year-over-year resistance trend data |
+| `ingestion_log` | Audit trail for data sync jobs |
+
+### Data seeding & maintenance
+
+```bash
+# Load seed data into the database
+npm run seed
+
+# Verify seed data integrity
+npm run verify
+
+# Sync drug metadata from the RxNorm API
+npm run sync:rxnorm
+```
+
+---
+
 ## Project Structure
 
 ```
-src/
-├── components/
-│   ├── Navbar.jsx                     # Navigation — Prescribe / Discharge / Dashboard
-│   ├── PatientSelector.jsx            # Patient dropdown
-│   ├── PatientContextCard.jsx         # Demographics, labs, allergies, meds
-│   ├── BacterialProbabilityGauge.jsx  # Scoring gauge + AI explanation
-│   ├── AntibioticRecommender.jsx      # Antibiotic selection, interactions, AI panels
-│   ├── ResistanceCostVisualizer.jsx   # Resistance trend charts
-│   ├── OverrideModal.jsx              # Override justification modal
-│   ├── PrescribingDashboard.jsx       # Analytics tab
-│   ├── DischargeWorkflow.jsx          # 4-step discharge workflow
-│   ├── SafetyAlertPanel.jsx           # Alert list with resolve actions
-│   ├── CascadeFlowDiagram.jsx         # Prescribing cascade visualizer
-│   ├── MedicationPicture.jsx          # Discharge medication summary
-│   ├── PatientLabsCard.jsx            # Lab values display
-│   ├── SymptomsList.jsx               # Symptoms list
-│   ├── StepIndicator.jsx              # Step progress indicator
-│   └── WatchOutSymptomCard.jsx        # Discharge warning signs
+rxguard-master/
+├── src/
+│   ├── components/
+│   │   ├── Navbar.jsx                     # Navigation — Prescribe / Discharge / Dashboard
+│   │   ├── PatientSelector.jsx            # Patient dropdown (synthetic + FHIR)
+│   │   ├── PatientContextCard.jsx         # Demographics, labs, allergies, meds
+│   │   ├── BacterialProbabilityGauge.jsx  # Scoring gauge + AI explanation
+│   │   ├── AntibioticRecommender.jsx      # Antibiotic selection, interactions, AI panels
+│   │   ├── ResistanceCostVisualizer.jsx   # Resistance trend charts
+│   │   ├── OverrideModal.jsx              # Override justification modal
+│   │   ├── PrescribingDashboard.jsx       # Analytics tab
+│   │   ├── DischargeWorkflow.jsx          # 4-step discharge workflow
+│   │   ├── SafetyAlertPanel.jsx           # Alert list with resolve actions
+│   │   ├── CascadeFlowDiagram.jsx         # Prescribing cascade visualizer
+│   │   ├── MedicationPicture.jsx          # Discharge medication summary
+│   │   ├── PatientLabsCard.jsx            # Lab values display
+│   │   ├── SymptomsList.jsx               # Symptoms list
+│   │   ├── StepIndicator.jsx              # Step progress indicator
+│   │   └── WatchOutSymptomCard.jsx        # Discharge warning signs
+│   │
+│   ├── services/
+│   │   ├── scoringEngine.js               # Centor, UTI, URI, pneumonia, sinusitis algorithms
+│   │   ├── recommendationEngine.js        # Antibiotic ranking + allergy/resistance checks
+│   │   ├── claudeApi.js                   # Groq API calls + rule-based fallbacks
+│   │   ├── safetyEngine.js                # Discharge safety check orchestrator
+│   │   ├── adeDetectionEngine.js          # Adverse drug event detection
+│   │   ├── cascadeDetector.js             # Prescribing cascade detection
+│   │   ├── interactionChecker.js          # Drug-drug interaction checker
+│   │   ├── renalDosingChecker.js          # Renal dose adjustment checker
+│   │   └── dischargeGenerator.js          # Discharge instruction generation
+│   │
+│   └── data/
+│       ├── patients.js                    # 11 synthetic prescribe-tab patient cases
+│       ├── dischargePatients.js           # Discharge workflow patient scenarios
+│       ├── antibiogram.js                 # Local resistance data + antibiotic metadata
+│       ├── guidelines.js                  # Clinical treatment guidelines per condition
+│       ├── drugInteractions.js            # Drug-drug interaction database
+│       ├── drugSideEffects.js             # Side effect profiles for ADE detection
+│       ├── cascadePatterns.js             # Known prescribing cascade patterns
+│       ├── renalDosingRules.js            # eGFR-based dose adjustment rules
+│       └── prescribingHistory.js          # Historical data for the dashboard
 │
-├── services/
-│   ├── scoringEngine.js               # Centor, UTI, URI, pneumonia, sinusitis algorithms
-│   ├── recommendationEngine.js        # Antibiotic ranking + allergy/resistance checks
-│   ├── claudeApi.js                   # Groq API calls + rule-based fallbacks
-│   ├── safetyEngine.js                # Discharge safety check orchestrator
-│   ├── adeDetectionEngine.js          # Adverse drug event detection
-│   ├── cascadeDetector.js             # Prescribing cascade detection
-│   ├── interactionChecker.js          # Drug-drug interaction checker
-│   ├── renalDosingChecker.js          # Renal dose adjustment checker
-│   └── dischargeGenerator.js          # Discharge instruction generation
+├── server/
+│   ├── index.js                           # Express server entry point (port 3001)
+│   ├── routes/
+│   │   ├── safety.js                      # POST /api/safety/check
+│   │   ├── interactions.js                # GET/POST /api/interactions
+│   │   ├── renalDosing.js                 # GET/POST /api/renalDosing
+│   │   ├── groq.js                        # POST /api/ai/groq (server-side key proxy)
+│   │   ├── drugs.js                       # GET /api/drugs
+│   │   ├── recommendations.js             # POST /api/recommendations
+│   │   ├── antibiogram.js                 # GET /api/antibiogram
+│   │   └── fhir.js                        # GET /api/fhir/* (FHIR R4 proxy)
+│   ├── services/
+│   │   ├── fhirFetcher.js                 # Fetches FHIR R4 resources
+│   │   └── fhirMapper.js                  # Maps FHIR → RxGuard schema
+│   ├── middleware/
+│   │   └── errorHandler.js                # Centralised error handling
+│   └── db/
+│       ├── schema.sql                     # SQLite table definitions
+│       └── client.js                      # better-sqlite3 connection
 │
-└── data/
-    ├── patients.js                    # 10 synthetic prescribe-tab patient cases
-    ├── dischargePatients.js           # Discharge workflow patient scenarios
-    ├── antibiogram.js                 # Local resistance data + antibiotic metadata
-    ├── guidelines.js                  # Clinical treatment guidelines per condition
-    ├── drugInteractions.js            # Drug-drug interaction database
-    ├── drugSideEffects.js             # Side effect profiles for ADE detection
-    ├── cascadePatterns.js             # Known prescribing cascade patterns
-    ├── renalDosingRules.js            # eGFR-based dose adjustment rules
-    └── prescribingHistory.js          # Historical data for the dashboard
+└── scripts/
+    ├── seed/seed-from-js.js               # Loads data into SQLite
+    ├── ingest/sync-rxnorm-cuis.js         # Syncs RxNorm drug metadata
+    └── verify-seed.js                     # Validates seed data integrity
 ```
+
+---
+
+## Available Scripts
+
+| Script | Description |
+|---|---|
+| `npm run dev` | Start Vite dev server only (frontend, synthetic data) |
+| `npm run server` | Start Express backend only |
+| `npm run dev:full` | Start both frontend and backend in parallel |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm run seed` | Seed the SQLite database |
+| `npm run verify` | Verify seed data integrity |
+| `npm run sync:rxnorm` | Sync RxNorm drug metadata |
 
 ---
 
@@ -388,4 +549,6 @@ The project enforces zero ESLint warnings. Key rules enforced:
 - The antibiogram reflects a fictional hospital facility
 - Clinical scoring algorithms are simplified implementations of validated tools (Centor, PSI-lite) — not certified for clinical use
 - AI explanations are generated by a general-purpose LLM and have not been validated against clinical guidelines
-- No authentication, persistence, or real EHR integration
+- FHIR integration is read-only — no write-back to EHR systems
+- No user authentication or role-based access control
+- SQLite database is local-only and not persisted across deployments

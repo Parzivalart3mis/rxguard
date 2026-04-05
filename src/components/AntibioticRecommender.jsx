@@ -440,14 +440,14 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
           <div className="flex gap-3 pt-4 border-t border-gray-100">
             <button
               onClick={handlePrescribe}
-              disabled={assessment?.safe === false}
+              disabled={!rec?.recommendation}
               className="flex-1 bg-clinical-teal text-white py-2 px-4 rounded-lg font-medium hover:bg-clinical-navy disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               Accept Recommendation
             </button>
             <button
               onClick={handleOverride}
-              disabled={isRecommended()}
+              disabled={assessment?.safe === false || isRecommended()}
               className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Override &amp; Prescribe Selected
