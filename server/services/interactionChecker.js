@@ -1,8 +1,9 @@
 /**
  * Drug-drug interaction checker — server-side version.
  *
- * Identical logic to src/services/interactionChecker.js but
- * data is injected as a parameter instead of statically imported.
+ * All interaction data comes from the drug_interactions table (seeded + RxNav).
+ * The former checkClassInteractions() has been removed — those patterns are now
+ * covered by the RxNav sync in interactionFetcher.js.
  */
 
 export const checkAllInteractions = (patient, drugInteractionsData) => {
@@ -52,57 +53,3 @@ export const checkAllInteractions = (patient, drugInteractionsData) => {
   return interactions;
 };
 
-export const checkClassInteractions = (patient) => {
-  const allMeds = [...patient.continuingMeds, ...patient.newMeds];
-  const classAlerts = [];
-
-  const hasAnticoagulant = allMeds.some((m) => m.drug === 'warfarin');
-  const hasAntibiotic = allMeds.some((m) =>
-    ['amoxicillin', 'azithromycin', 'tmp_smx', 'ciprofloxacin'].includes(m.drug)
-  );
-
-  if (hasAnticoagulant && hasAntibiotic) {
-    const antibiotic = allMeds.find((m) =>
-      ['amoxicillin', 'azithromycin', 'tmp_smx', 'ciprofloxacin'].includes(m.drug)
-    );
-    classAlerts.push({
-      type: 'anticoagulant_antibiotic',
-      severity: 'major',
-      title: 'Anticoagulant + Antibiotic Interaction',
-      description: `Warfarin + ${antibiotic.drug} increases bleeding risk`,
-      action: 'Check INR 3-5 days after starting antibiotic. Consider antibiotic alternative.',
-      medications: ['warfarin', antibiotic.drug],
-    });
-  }
-
-  const hasNSAID  = allMeds.some((m) => m.drug === 'ibuprofen');
-  const hasACEI   = allMeds.some((m) => m.drug === 'lisinopril');
-  const hasDiuretic = allMeds.some((m) => m.drug === 'furosemide');
-
-  if (hasNSAID && (hasACEI || hasDiuretic)) {
-    classAlerts.push({
-      type: 'nsaid_renal',
-      severity: 'major',
-      title: 'NSAID + ACEI/Diuretic Triple Whammy',
-      description: 'NSAID + ACE inhibitor + Diuretic increases acute kidney injury risk',
-      action: 'Avoid this combination if possible. Monitor kidney function closely.',
-      medications: ['ibuprofen', 'lisinopril', 'furosemide'].filter((d) =>
-        allMeds.some((m) => m.drug === d)
-      ),
-    });
-  }
-
-  const hasSSRI = allMeds.some((m) => m.drug === 'sertraline');
-  if (hasSSRI && hasNSAID) {
-    classAlerts.push({
-      type: 'ssri_nsaid_bleeding',
-      severity: 'moderate',
-      title: 'SSRI + NSAID GI Bleeding Risk',
-      description: 'Combining SSRI and NSAID increases risk of gastrointestinal bleeding',
-      action: 'Consider adding PPI protection or switching pain medication.',
-      medications: ['sertraline', 'ibuprofen'],
-    });
-  }
-
-  return classAlerts;
-};

@@ -1,4 +1,5 @@
 import { Phone, Info, AlertCircle } from 'lucide-react';
+import { getDrugDisplayName } from '../data/antibiogram.js';
 
 /**
  * Renders watch-out symptom information for a single medication.
@@ -10,17 +11,14 @@ const WatchOutSymptomCard = ({ medication, sideEffects }) => {
   if (!sideEffects) {
     return (
       <div className="card p-4">
-        <div className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{medication.drug}</div>
+        <div className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{getDrugDisplayName(medication.drug)}</div>
         <div className="text-sm text-gray-400 dark:text-gray-500 mt-1">No side effect data available</div>
       </div>
     );
   }
 
   const seriousSideEffects = sideEffects.side_effects.filter(
-    (se) =>
-      se.frequency === 'rare' ||
-      se.symptom.includes('angioedema') ||
-      se.symptom.includes('lactic acidosis')
+    (se) => se.frequency === 'rare'
   );
 
   const commonSideEffects = sideEffects.side_effects.filter(
@@ -31,7 +29,7 @@ const WatchOutSymptomCard = ({ medication, sideEffects }) => {
     <div className="card overflow-hidden">
       {/* Drug header */}
       <div className="bg-clinical-navy dark:bg-gray-900 px-4 py-3 border-b border-white/5">
-        <div className="font-bold text-white text-sm">{medication.drug}</div>
+        <div className="font-bold text-white text-sm">{getDrugDisplayName(medication.drug)}</div>
         <div className="text-xs text-white/50 mt-0.5">{medication.dose} — {medication.reason}</div>
       </div>
 
@@ -71,7 +69,7 @@ const WatchOutSymptomCard = ({ medication, sideEffects }) => {
               <li key={idx} className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1.5">
                 <span className="mt-0.5 flex-shrink-0">•</span>
                 {se.description}
-                <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">({se.pct}%)</span>
+                {se.pct != null && <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">({se.pct}%)</span>}
               </li>
             ))}
           </ul>
@@ -84,7 +82,11 @@ const WatchOutSymptomCard = ({ medication, sideEffects }) => {
             <span className="text-xs font-bold text-blue-800 dark:text-blue-300">When to call your doctor</span>
           </div>
           <ul className="space-y-0.5">
-            {['Side effects are severe or don\'t improve', 'You have questions about the medication', 'You want to stop taking it'].map((item, i) => (
+            {[
+              `Side effects from ${getDrugDisplayName(medication.drug)} are severe or not improving`,
+              `Before stopping ${getDrugDisplayName(medication.drug)} early`,
+              `Any questions about ${getDrugDisplayName(medication.drug)} or your treatment`,
+            ].map((item, i) => (
               <li key={i} className="text-xs text-blue-700 dark:text-blue-400 flex items-start gap-1.5">
                 <span className="mt-0.5">•</span>{item}
               </li>

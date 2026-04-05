@@ -57,6 +57,72 @@ const SeverityBadge = ({ count, label, color }) => {
   );
 };
 
+/**
+ * Renders AI-generated discharge text with basic markdown support:
+ * **bold**, numbered lists, bullet lines (☐ • -), and blank-line paragraphs.
+ * No external dependency — keeps the bundle light.
+ */
+const DischargeText = ({ text, className = '' }) => {
+  if (!text) return null;
+
+  const renderInline = (str) => {
+    const parts = str.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) =>
+      part.startsWith('**') && part.endsWith('**')
+        ? <strong key={i}>{part.slice(2, -2)}</strong>
+        : part
+    );
+  };
+
+  const lines = text.split('\n');
+
+  return (
+    <div className={`text-sm text-slate-700 dark:text-slate-300 leading-relaxed space-y-1 ${className}`}>
+      {lines.map((line, i) => {
+        if (line.trim() === '') return <div key={i} className="h-2" />;
+
+        // Checkbox lines
+        if (line.trimStart().startsWith('☐')) {
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-clinical-teal flex-shrink-0 mt-0.5">☐</span>
+              <span>{renderInline(line.replace(/^[\s☐]+/, ''))}</span>
+            </div>
+          );
+        }
+
+        // Numbered list items
+        const numberedMatch = line.match(/^(\d+)\.\s+(.*)/);
+        if (numberedMatch) {
+          return (
+            <div key={i} className="flex items-start gap-2">
+              <span className="font-bold text-clinical-teal flex-shrink-0 w-5 text-right">{numberedMatch[1]}.</span>
+              <span>{renderInline(numberedMatch[2])}</span>
+            </div>
+          );
+        }
+
+        // Bullet lines (• or -)
+        if (line.trimStart().startsWith('•') || line.trimStart().startsWith('- ')) {
+          return (
+            <div key={i} className="flex items-start gap-2 pl-4">
+              <span className="flex-shrink-0 mt-0.5 text-slate-400">•</span>
+              <span>{renderInline(line.replace(/^[\s•\-]+/, ''))}</span>
+            </div>
+          );
+        }
+
+        // Section headers (ALL CAPS lines or lines ending with :)
+        if (line === line.toUpperCase() && line.trim().length > 3) {
+          return <p key={i} className="font-bold text-gray-800 dark:text-gray-200 mt-3">{renderInline(line)}</p>;
+        }
+
+        return <p key={i}>{renderInline(line)}</p>;
+      })}
+    </div>
+  );
+};
+
 const DischargeWorkflow = ({ onNavigate }) => {
   const { patients: dischargePatientsAll, getDischargePatient } = useDischargePatients();
   const { activePatient, acceptedPrescriptions } = usePatientContext();
@@ -290,7 +356,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
     setCurrentStep(3);
     try {
       const [instructions, followUp] = await Promise.all([
-        generateMedicationInstructions(displayPatient),
+        generateMedicationInstructions(displayPatient, sideEffectsMap),
         generateFollowUpActions(displayPatient, effectiveSafetyResult.allAlerts),
       ]);
       setDischargeOutput({ instructions, followUp });
@@ -581,9 +647,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
                     <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Medication Instructions</h3>
                     <span className="text-xs text-slate-400 dark:text-slate-500 font-normal border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5">plain language</span>
                   </div>
-                  <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
-                    {dischargeOutput.instructions}
-                  </pre>
+                  <DischargeText text={dischargeOutput.instructions} />
                 </div>
 
                 {/* Follow-up Actions */}
@@ -592,9 +656,7 @@ const DischargeWorkflow = ({ onNavigate }) => {
                     <ClipboardList className="w-4 h-4 text-clinical-teal" />
                     <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Follow-up Actions</h3>
                   </div>
-                  <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
-                    {dischargeOutput.followUp}
-                  </pre>
+                  <DischargeText text={dischargeOutput.followUp} />
                 </div>
               </div>
 

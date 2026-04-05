@@ -6,7 +6,7 @@
  */
 
 import db from '../db/client.js';
-import { checkAllInteractions, checkClassInteractions } from './interactionChecker.js';
+import { checkAllInteractions } from './interactionChecker.js';
 import { checkRenalDosing, checkAKIRisk, formatRenalAlert } from './renalDosingChecker.js';
 import { detectADEs } from './adeDetectionEngine.js';
 import { detectCascades, analyzeCascade } from './cascadeDetector.js';
@@ -171,11 +171,11 @@ export const runSafetyChecks = (patient) => {
     });
   }
 
-  // 3. Drug-Drug Interactions
+  // 3. Drug-Drug Interactions (data-driven from DB — seeded + RxNav)
   const interactions = checkAllInteractions(patient, drugInteractionsData);
   for (const interaction of interactions) {
-    const isNew     = interaction.hasNewDrug;
-    const severity  =
+    const isNew    = interaction.hasNewDrug;
+    const severity =
       interaction.severity === 'major' ? 'critical' :
       interaction.severity === 'moderate' && isNew ? 'major' :
       interaction.severity;
@@ -188,19 +188,6 @@ export const runSafetyChecks = (patient) => {
       details:           interaction,
       action:            interaction.action,
       isNewDrugInvolved: isNew,
-    });
-  }
-
-  // 4. Class-based Interactions
-  const classAlerts = checkClassInteractions(patient);
-  for (const alert of classAlerts) {
-    addToSeverityBucket(alerts, {
-      type:        'class_interaction',
-      severity:    alert.severity,
-      title:       alert.title,
-      description: alert.description,
-      action:      alert.action,
-      medications: alert.medications,
     });
   }
 
@@ -234,7 +221,7 @@ export const runSafetyChecks = (patient) => {
 
   const stats = {
     total:    adeAlerts.length + cascades.length + interactions.length +
-              classAlerts.length + renalAlerts.length + akiRisks.length,
+              renalAlerts.length + akiRisks.length,
     critical: alerts.critical.length,
     major:    alerts.major.length,
     moderate: alerts.moderate.length,

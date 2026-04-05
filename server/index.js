@@ -16,6 +16,9 @@ config();
 
 import express from 'express';
 import cors    from 'cors';
+import db from './db/client.js';
+import { getSideEffects } from './services/sideEffectsFetcher.js';
+import { syncDrugInteractions } from './services/interactionFetcher.js';
 
 import safetyRouter          from './routes/safety.js';
 import interactionsRouter    from './routes/interactions.js';
@@ -64,4 +67,40 @@ app.listen(PORT, () => {
   console.log(`  GROQ_API_KEY:   ${process.env.GROQ_API_KEY ? 'set ✓' : 'not set (AI fallbacks will be used)'}`);
   console.log(`  FHIR_BASE_URL:  ${process.env.FHIR_BASE_URL || 'https://hapi.fhir.org/baseR4 (default)'}`);
   console.log(`  FHIR_AUTH_TOKEN: ${process.env.FHIR_AUTH_TOKEN ? 'set ✓' : 'not set (unauthenticated)'}`);
+
+  // Background warmup: sync RxNav drug interactions (no API key needed)
+  setImmediate(async () => {
+    try {
+      await syncDrugInteractions();
+    } catch (err) {
+      console.warn('[warmup] Interaction sync failed:', err.message);
+    }
+  });
+
+  // Background warmup: fetch OpenFDA side effects for any drug that has none cached
+  if (process.env.GROQ_API_KEY) {
+    setImmediate(async () => {
+      const missing = db.prepare(`
+        SELECT d.internal_key FROM drugs d
+        WHERE NOT EXISTS (
+          SELECT 1 FROM drug_side_effects dse WHERE dse.drug_key = d.internal_key
+        )
+      `).all().map(r => r.internal_key);
+
+      if (missing.length === 0) return;
+      console.log(`[warmup] Fetching OpenFDA side effects for ${missing.length} drugs: ${missing.join(', ')}`);
+
+      const delay = (ms) => new Promise(res => setTimeout(res, ms));
+      for (const key of missing) {
+        try {
+          const result = await getSideEffects(key);
+          console.log(`[warmup] ${key}: ${result ? `${result.side_effects.length} effects cached` : 'no data found'}`);
+        } catch (err) {
+          console.warn(`[warmup] ${key}: failed — ${err.message}`);
+        }
+        await delay(5000); // 5s between drugs keeps well within Groq's TPM limit
+      }
+      console.log('[warmup] Side effects warmup complete.');
+    });
+  }
 });

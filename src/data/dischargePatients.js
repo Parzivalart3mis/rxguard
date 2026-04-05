@@ -450,7 +450,48 @@ export const dischargePatients = [
     
     dischargeDate: "2025-04-03",
     admissionDate: "2025-04-01"
-  }
+  },
+
+  {
+    id: 'ddemo-11',
+    _isDemo: true,
+    name: 'Emily Davis',
+    age: 8,
+    sex: 'female',
+    weight: 26,
+    demo: 'Pediatric otitis media: amoxicillin prescribed, check for dose and duration',
+
+    continuingMeds: [],
+    newMeds: [
+      { drug: 'amoxicillin', dose: '250mg', frequency: 'three times daily', duration: '10 days', startDate: '2026-04-04', reason: 'Acute otitis media with bulging TM and fever' }
+    ],
+    stoppedMeds: [],
+
+    labs: {
+      egfr: 120,
+      creatinine: 0.5,
+      potassium: 4.0,
+      wbc: 11.2,
+      hemoglobin: 12.4
+    },
+
+    symptoms: [
+      { symptom: 'ear pain', onset: '2026-04-03', severity: 'severe', description: 'Right ear pain, crying and pulling at ear' },
+      { symptom: 'fever', onset: '2026-04-03', severity: 'moderate', description: 'Temperature 39.0°C' }
+    ],
+
+    allergies: [],
+    conditions: ['acute_otitis_media'],
+
+    vitalSigns: {
+      temperature: 39.0,
+      heartRate: 108,
+      bloodPressure: '98/62'
+    },
+
+    dischargeDate: '2026-04-05',
+    admissionDate: '2026-04-04'
+  },
 ];
 
 export default dischargePatients;

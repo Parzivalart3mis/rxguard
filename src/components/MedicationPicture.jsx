@@ -1,5 +1,6 @@
 import React from 'react';
 import { Layers } from 'lucide-react';
+import { getDrugDisplayName } from '../data/antibiogram.js';
 
 const MedicationPicture = ({ patient, flaggedMeds = [] }) => {
   const isFlagged = (med) => flaggedMeds.includes(med.drug);
@@ -21,7 +22,7 @@ const MedicationPicture = ({ patient, flaggedMeds = [] }) => {
             ? 'text-gray-400 dark:text-gray-500 line-through'
             : 'text-gray-900 dark:text-gray-100'
         }`}>
-          {med.drug}
+          {getDrugDisplayName(med.drug)}
         </div>
         <div className={`mt-0.5 ${
           type === 'stopped'
@@ -30,6 +31,16 @@ const MedicationPicture = ({ patient, flaggedMeds = [] }) => {
         }`}>
           {med.dose}{med.frequency ? ` · ${med.frequency}` : ''}
         </div>
+        {type !== 'stopped' && med.reason && (
+          <div className="text-xs text-gray-400 dark:text-gray-500 italic mt-0.5">
+            {med.reason}
+          </div>
+        )}
+        {type === 'continuing' && med.startDate && (
+          <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Since {med.startDate}
+          </div>
+        )}
         {type === 'new' && med.duration && (
           <div className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
             {med.duration}
@@ -96,6 +107,11 @@ const MedicationPicture = ({ patient, flaggedMeds = [] }) => {
               <div className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${col.dot}`} />
                 <span className="text-xs font-bold tracking-wide">{col.label}</span>
+                {col.meds.length > 0 && (
+                  <span className="ml-auto text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/60 dark:bg-black/30 text-gray-700 dark:text-gray-300">
+                    {col.meds.length}
+                  </span>
+                )}
               </div>
               <p className="text-xs opacity-70 mt-0.5">{col.sub}</p>
             </div>

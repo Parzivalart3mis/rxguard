@@ -135,19 +135,26 @@ Rules:
 FDA label text:
 ${labelText.slice(0, 3000)}`;
 
-  const res = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1024,
-      temperature: 0.1,
-    }),
-  });
+  let res;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    res = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+        temperature: 0.1,
+      }),
+    });
+    if (res.status !== 429) break;
+    const wait = attempt * 10000; // 10s, 20s backoff
+    console.warn(`[sideEffectsFetcher] Groq 429 for "${drugKey}", retrying in ${wait / 1000}s (attempt ${attempt}/3)`);
+    await new Promise(r => setTimeout(r, wait));
+  }
 
   if (!res.ok) throw new Error(`Groq error: ${res.status}`);
   const data = await res.json();
