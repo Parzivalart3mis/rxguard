@@ -79,7 +79,7 @@ const Navbar = ({ pageTitle, pageSub, onMenuClick }) => {
           {/* User avatar */}
           <div className="flex items-center gap-2.5 pl-1">
             <div className="hidden sm:block text-right">
-              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">Dr. S. Patel</p>
+              <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight">Dr. K. Patel</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-500">Internal Medicine</p>
             </div>
             <div className="relative">
