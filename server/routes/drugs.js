@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db/client.js';
+import { getSideEffectsMap } from '../services/sideEffectsFetcher.js';
 
 const router = Router();
 
@@ -9,8 +10,12 @@ const router = Router();
  * Returns a map of { [drug_key]: { class, side_effects: [...] } }
  * shaped identically to drugSideEffects.js so WatchOutSymptomCard
  * needs only a prop change, not a logic change.
+ *
+ * Cache hit  → served from SQLite instantly.
+ * Cache miss → fetched from OpenFDA, parsed by Groq, cached, then returned.
+ * Stale (>30 days) → stale data returned immediately; refresh happens in background.
  */
-router.get('/drugs/side-effects', (req, res, next) => {
+router.get('/drugs/side-effects', async (req, res, next) => {
   try {
     const rawKeys = req.query.keys;
     if (!rawKeys) {
@@ -22,35 +27,20 @@ router.get('/drugs/side-effects', (req, res, next) => {
       return res.json({});
     }
 
-    // Fetch all active side effects for the requested drug keys
-    const placeholders = keys.map(() => '?').join(',');
-    const rows = db
-      .prepare(`
-        SELECT dse.drug_key, dse.symptom, dse.frequency, dse.frequency_pct,
-               dse.onset, dse.description, d.drug_class
-        FROM drug_side_effects dse
-        LEFT JOIN drugs d ON d.internal_key = dse.drug_key
-        WHERE dse.is_active = 1 AND dse.drug_key IN (${placeholders})
-        ORDER BY dse.drug_key, dse.frequency
-      `)
-      .all(...keys);
+    // Check which keys are already cached and fresh — return those immediately
+    // while triggering background fetches for the rest.
+    const sideEffectsMap = await getSideEffectsMap(keys);
 
-    // Build the same shape as drugSideEffects.js
-    const result = {};
-    for (const row of rows) {
-      if (!result[row.drug_key]) {
-        result[row.drug_key] = { class: row.drug_class || row.drug_key, side_effects: [] };
+    // Strip internal _cachedAt field before sending to client
+    const response = {};
+    for (const [key, val] of Object.entries(sideEffectsMap)) {
+      if (val) {
+        const { _cachedAt, ...rest } = val;
+        response[key] = rest;
       }
-      result[row.drug_key].side_effects.push({
-        symptom:     row.symptom,
-        frequency:   row.frequency,
-        pct:         row.frequency_pct,
-        onset:       row.onset,
-        description: row.description,
-      });
     }
 
-    res.json(result);
+    res.json(response);
   } catch (err) {
     next(err);
   }

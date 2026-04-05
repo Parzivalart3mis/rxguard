@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS drug_side_effects (
   description     TEXT,
   source          TEXT    NOT NULL DEFAULT 'seed',
   is_active       INTEGER DEFAULT 1,
-  created_at      TEXT    DEFAULT (datetime('now'))
+  created_at      TEXT    DEFAULT (datetime('now')),
+  cached_at       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_side_effects_drug ON drug_side_effects(drug_key);
