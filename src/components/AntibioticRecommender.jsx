@@ -1,16 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Pill, AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, ShieldOff, Zap } from 'lucide-react';
+import {
+  Pill, AlertTriangle, Check, ChevronDown, ChevronUp,
+  Loader2, ShieldOff, Zap, Info, CheckCircle2
+} from 'lucide-react';
 
-// ── Backend flag ───────────────────────────────────────────────────────────────
 const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === 'true';
 
-// ── Local (fallback) imports — only used when USE_BACKEND=false ────────────────
 import { getRecommendation as getRecommendationLocal } from '../services/recommendationEngine.js';
 import { antibioticMetadata as localAntibioticMetadata } from '../data/antibiogram.js';
 import { checkDrugInteractions } from '../services/interactionChecker.js';
 import { generateRecommendationRationale, generateSuboptimalReasoning } from '../services/claudeApi.js';
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverride }) => {
   const [selectedAntibiotic, setSelectedAntibiotic] = useState('');
@@ -18,41 +17,30 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
   const [rationaleState, setRationaleState]         = useState({ text: null, forAntibiotic: null });
   const [suboptimalState, setSuboptimalState]       = useState({ text: null, forAntibiotic: null });
 
-  // ── Backend mode: async recommendation state ─────────────────────────────────
   const [baseRecommendation, setBaseRecommendation] = useState(null);
   const [recommendation,     setRecommendation]     = useState(null);
-  const [recLoading,         setRecLoading]          = useState(false);
-  const [recError,           setRecError]            = useState(null);
+  const [recLoading,         setRecLoading]         = useState(false);
+  const [recError,           setRecError]           = useState(null);
 
-  // ── Derived antibiotic list ───────────────────────────────────────────────────
-  // Backend: from antibiogramData prop (fetched by App.jsx)
-  // Fallback: from local static import
-  const antibioticMeta     = USE_BACKEND && antibiogramData
+  const antibioticMeta = USE_BACKEND && antibiogramData
     ? antibiogramData.antibioticMetadata
     : localAntibioticMetadata;
   const AVAILABLE_ANTIBIOTICS = Object.keys(antibioticMeta);
 
-  // ── Base recommendation (no antibiotic selected) ──────────────────────────────
-  // Used to detect viral/no-antibiotic conditions.
-
-  // Fallback: synchronous useMemo
   const baseRecommendationLocal = useMemo(() => {
     if (USE_BACKEND || !patient) return null;
     return getRecommendationLocal(patient);
   }, [patient]);
 
-  // Backend: fetch on patient change
   useEffect(() => {
     if (!USE_BACKEND || !patient) return;
     const ctrl = new AbortController();
     fetch('/api/recommendations', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ patient }),
-      signal:  ctrl.signal,
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patient }), signal: ctrl.signal,
     })
       .then((r) => r.json())
-      .then((data) => setBaseRecommendation(data))
+      .then(setBaseRecommendation)
       .catch((err) => { if (err.name !== 'AbortError') console.error('base rec error:', err); });
     return () => ctrl.abort();
   }, [patient]);
@@ -60,26 +48,19 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
   const baseRec = USE_BACKEND ? baseRecommendation : baseRecommendationLocal;
   const isViralCondition = baseRec && !baseRec.recommendation && baseRec.conditionName;
 
-  // ── Recommendation (with selected antibiotic) ─────────────────────────────────
-
-  // Fallback: synchronous useMemo
   const recommendationLocal = useMemo(() => {
     if (USE_BACKEND || !patient || !selectedAntibiotic) return null;
     return getRecommendationLocal(patient, selectedAntibiotic);
   }, [patient, selectedAntibiotic]);
 
-  // Backend: fetch on patient or selectedAntibiotic change
   useEffect(() => {
     if (!USE_BACKEND || !patient || !selectedAntibiotic) return;
     const ctrl = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecLoading(true);
     setRecError(null);
     fetch('/api/recommendations', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ patient, selectedAntibiotic }),
-      signal:  ctrl.signal,
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patient, selectedAntibiotic }), signal: ctrl.signal,
     })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => { setRecommendation(data); setRecLoading(false); })
@@ -88,23 +69,16 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
         setRecError('Failed to load recommendation');
         setRecLoading(false);
       });
-    return () => { ctrl.abort(); };
+    return () => ctrl.abort();
   }, [patient, selectedAntibiotic]);
 
-  // While loading, treat recommendation as null so stale data isn't shown
   const rec = USE_BACKEND ? (recLoading ? null : recommendation) : recommendationLocal;
-
-  // ── Drug-drug interactions ────────────────────────────────────────────────────
-  // Backend: returned inside rec.interactions (no separate fetch needed)
-  // Fallback: synchronous local check
 
   const drugInteractions = useMemo(() => {
     if (USE_BACKEND) return rec?.interactions || [];
     if (!selectedAntibiotic || !patient?.currentMedicationDrugs?.length) return [];
     return checkDrugInteractions({ drug: selectedAntibiotic }, patient.currentMedicationDrugs);
   }, [rec, selectedAntibiotic, patient]);
-
-  // ── AI rationale ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!rec?.recommendation || !patient) return;
@@ -118,20 +92,14 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
   const rationale       = rationaleState.forAntibiotic === selectedAntibiotic ? rationaleState.text : null;
   const loadingRationale = !!rec?.recommendation && rationaleState.forAntibiotic !== selectedAntibiotic;
 
-  // ── Suboptimal reasoning ──────────────────────────────────────────────────────
-
   const isNotRecommended = rec?.recommendation &&
-    selectedAntibiotic &&
-    selectedAntibiotic !== rec.recommendation.antibiotic;
+    selectedAntibiotic && selectedAntibiotic !== rec.recommendation.antibiotic;
 
   useEffect(() => {
     const selectedAssessment = rec?.selectedAntibiotic;
     if (!isNotRecommended || !rec?.recommendation || !selectedAssessment) return;
     let ignore = false;
-    const selectedMeta = {
-      name:     antibioticMeta[selectedAntibiotic]?.name || selectedAntibiotic,
-      spectrum: selectedAssessment.spectrum,
-    };
+    const selectedMeta = { name: antibioticMeta[selectedAntibiotic]?.name || selectedAntibiotic, spectrum: selectedAssessment.spectrum };
     generateSuboptimalReasoning(patient, selectedMeta, selectedAssessment, rec.recommendation)
       .then((text) => { if (!ignore) setSuboptimalState({ text, forAntibiotic: selectedAntibiotic }); })
       .catch(() =>   { if (!ignore) setSuboptimalState({ text: null, forAntibiotic: selectedAntibiotic }); });
@@ -140,8 +108,6 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
 
   const suboptimalText    = suboptimalState.forAntibiotic === selectedAntibiotic ? suboptimalState.text : null;
   const loadingSuboptimal = isNotRecommended && suboptimalState.forAntibiotic !== selectedAntibiotic;
-
-  // ── Helpers ───────────────────────────────────────────────────────────────────
 
   if (!patient) return null;
 
@@ -173,187 +139,188 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
 
   const assessment = rec?.selectedAntibiotic || null;
 
-  // ── Render ────────────────────────────────────────────────────────────────────
-
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Pill className="w-5 h-5 text-clinical-navy" />
-        <h3 className="text-lg font-semibold text-gray-900">Antibiotic Selection</h3>
+    <div className="card p-6">
+      <div className="flex items-center gap-2 mb-5">
+        <Pill className="w-4.5 h-4.5 text-clinical-navy dark:text-clinical-teal" style={{ width: '1.125rem', height: '1.125rem' }} />
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Antibiotic Selection</h3>
       </div>
 
-      {/* Error banner (backend mode only) */}
+      {/* Error banner */}
       {recError && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl p-3 mb-4">
           <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{recError}</p>
+          <p className="text-sm text-red-700 dark:text-red-400">{recError}</p>
         </div>
       )}
 
-      {/* Viral / No Antibiotic Banner */}
+      {/* Viral/No Antibiotic Banner */}
       {isViralCondition && (
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 rounded-xl p-4 mb-4">
           <ShieldOff className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-blue-800 text-sm">Antibiotic not recommended</p>
-            <p className="text-sm text-blue-700 mt-0.5">
-              {baseRec.conditionName} is likely viral.{' '}
-              {baseRec.notes || 'Supportive care is advised.'}
+            <p className="font-semibold text-blue-900 dark:text-blue-200 text-sm">Antibiotic not recommended</p>
+            <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5 leading-relaxed">
+              {baseRec.conditionName} is likely viral.{' '}{baseRec.notes || 'Supportive care is advised.'}
             </p>
           </div>
         </div>
       )}
 
       {/* Antibiotic Selector */}
-      <div className="mb-4">
-        <label className="text-sm font-medium text-gray-700 mb-2 block">
+      <div className="mb-5">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
           Select antibiotic you intend to prescribe
         </label>
-        <select
-          value={selectedAntibiotic}
-          onChange={(e) => setSelectedAntibiotic(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinical-teal focus:border-transparent"
-        >
-          <option value="">Choose an antibiotic...</option>
-          {AVAILABLE_ANTIBIOTICS.map((abx) => (
-            <option key={abx} value={abx}>
-              {antibioticMeta[abx]?.name || abx}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={selectedAntibiotic}
+            onChange={(e) => setSelectedAntibiotic(e.target.value)}
+            className="select-base pr-10"
+          >
+            <option value="">Choose an antibiotic…</option>
+            {AVAILABLE_ANTIBIOTICS.map((abx) => (
+              <option key={abx} value={abx}>{antibioticMeta[abx]?.name || abx}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
       </div>
 
-      {/* Loading spinner (backend mode) */}
+      {/* Loading spinner */}
       {recLoading && (
-        <div className="flex items-center gap-2 text-gray-500 mb-4">
+        <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 mb-4">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading recommendation...</span>
+          <span className="text-sm">Loading recommendation…</span>
         </div>
       )}
 
       {selectedAntibiotic && assessment && !recLoading && (
         <>
           {/* Recommendation status */}
-          <div className={`p-4 rounded-lg mb-4 ${
+          <div className={`rounded-xl p-4 mb-4 border ${
             isRecommended()
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-amber-50 border border-amber-200'
+              ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800/40'
+              : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/40'
           }`}>
             <div className="flex items-start gap-3">
-              {isRecommended() ? (
-                <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              )}
+              {isRecommended()
+                ? <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                : <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              }
               <div>
-                <p className={`font-semibold ${isRecommended() ? 'text-green-800' : 'text-amber-800'}`}>
+                <p className={`font-semibold text-sm ${
+                  isRecommended()
+                    ? 'text-green-900 dark:text-green-200'
+                    : 'text-amber-900 dark:text-amber-200'
+                }`}>
                   {isRecommended()
                     ? 'This is the recommended first-line option'
                     : 'A better alternative may be available'}
                 </p>
                 {!isRecommended() && rec?.recommendation && (
-                  <p className="text-sm text-amber-700 mt-1">
-                    Consider {rec.recommendation.name} instead
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                    Consider <strong>{rec.recommendation.name}</strong> instead
                   </p>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Why selected antibiotic is suboptimal */}
+          {/* Suboptimal reasoning */}
           {!isRecommended() && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <p className="text-sm font-semibold text-amber-800">Why this may not be optimal</p>
-              </div>
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">
+                Why this may not be optimal
+              </p>
               {loadingSuboptimal && (
-                <div className="flex items-center gap-2 text-amber-600">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Analysing selection...</span>
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="text-sm">Analysing selection…</span>
                 </div>
               )}
               {suboptimalText && (
-                <p className="text-sm text-amber-700">{suboptimalText}</p>
+                <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">{suboptimalText}</p>
               )}
             </div>
           )}
 
-          {/* Drug details */}
-          <div className="space-y-3 mb-4">
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-600">Recommended dose</span>
-              <span className="text-sm font-medium text-gray-900">{assessment.dose}</span>
+          {/* Drug details table */}
+          <div className="space-y-0 mb-4 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+            <div className="data-row px-4">
+              <span className="data-label">Recommended dose</span>
+              <span className="data-value">{assessment.dose}</span>
             </div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-600">Spectrum</span>
-              <span className={`text-sm font-medium px-2 py-1 rounded ${
-                assessment.spectrum === 'narrow' ? 'bg-green-100 text-green-800' :
-                assessment.spectrum === 'medium' ? 'bg-blue-100 text-blue-800' :
-                'bg-purple-100 text-purple-800'
+            <div className="data-row px-4">
+              <span className="data-label">Spectrum</span>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${
+                assessment.spectrum === 'narrow' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                assessment.spectrum === 'medium' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
               }`}>
                 {assessment.spectrum}
               </span>
             </div>
             {import.meta.env.DEV && assessment?.rxnormCui && (
-              <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-400">RxNorm CUI</span>
-                <span className="text-xs font-mono text-gray-400">{assessment.rxnormCui}</span>
+              <div className="data-row px-4">
+                <span className="text-sm text-gray-400 dark:text-gray-500">RxNorm CUI</span>
+                <span className="text-xs font-mono text-gray-400 dark:text-gray-500">{assessment.rxnormCui}</span>
               </div>
             )}
             {assessment.resistanceData && (
-              <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-600">Local susceptibility</span>
-                <span className={`text-sm font-medium ${
-                  assessment.resistanceData.susceptibility >= 90 ? 'text-green-600' :
-                  assessment.resistanceData.susceptibility >= 80 ? 'text-yellow-600' :
-                  'text-red-600'
+              <div className="data-row px-4">
+                <span className="data-label">Local susceptibility</span>
+                <span className={`text-sm font-semibold ${
+                  assessment.resistanceData.susceptibility >= 90 ? 'text-green-600 dark:text-green-400' :
+                  assessment.resistanceData.susceptibility >= 80 ? 'text-yellow-600 dark:text-yellow-400' :
+                  'text-red-600 dark:text-red-400'
                 }`}>
                   {assessment.resistanceData.susceptibility}%
-                  <span className="text-gray-400 text-xs ml-1">({assessment.resistanceData.pathogen})</span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs font-normal ml-1">
+                    ({assessment.resistanceData.pathogen})
+                  </span>
                 </span>
               </div>
             )}
             {rec?.duration && (
-              <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-600">Treatment duration</span>
-                <span className="text-sm font-medium text-gray-900">{rec.duration}</span>
+              <div className="data-row px-4">
+                <span className="data-label">Treatment duration</span>
+                <span className="data-value">{rec.duration}</span>
               </div>
             )}
           </div>
 
-          {/* Warnings */}
+          {/* Allergy warning */}
           {assessment.safe === false && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <p className="text-sm font-semibold text-red-800 mb-1">Allergy Warning — Cannot Prescribe</p>
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl p-4 mb-4">
+              <p className="text-sm font-bold text-red-900 dark:text-red-200 mb-1">Allergy Warning — Cannot Prescribe</p>
               {assessment.allergyWarnings?.map((warning, idx) => (
-                <p key={idx} className="text-sm text-red-700">{warning}</p>
+                <p key={idx} className="text-sm text-red-700 dark:text-red-400">{warning}</p>
               ))}
             </div>
           )}
 
-          {/* Drug-Drug Interaction Warnings */}
+          {/* Drug-Drug Interactions */}
           {drugInteractions.length > 0 && (
             <div className="mb-4 space-y-2">
               {drugInteractions.map((interaction, idx) => {
                 const isMajor = interaction.severity === 'major';
                 return (
-                  <div
-                    key={idx}
-                    className={`rounded-lg p-3 border ${
-                      isMajor ? 'bg-red-50 border-red-300' : 'bg-orange-50 border-orange-200'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2 mb-1">
-                      <Zap className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isMajor ? 'text-red-600' : 'text-orange-500'}`} />
+                  <div key={idx} className={`rounded-xl p-4 border ${
+                    isMajor
+                      ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/40'
+                      : 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800/40'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <Zap className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isMajor ? 'text-red-600 dark:text-red-400' : 'text-orange-500 dark:text-orange-400'}`} />
                       <div>
-                        <p className={`text-sm font-semibold ${isMajor ? 'text-red-800' : 'text-orange-800'}`}>
-                          {isMajor ? 'Major' : 'Moderate'} Drug Interaction — {interaction.withDrug?.name || interaction.withDrug?.drug}
+                        <p className={`text-sm font-semibold ${isMajor ? 'text-red-900 dark:text-red-200' : 'text-orange-900 dark:text-orange-200'}`}>
+                          {isMajor ? 'Major' : 'Moderate'} interaction — {interaction.withDrug?.name || interaction.withDrug?.drug}
                         </p>
-                        <p className={`text-sm mt-0.5 ${isMajor ? 'text-red-700' : 'text-orange-700'}`}>
+                        <p className={`text-sm mt-0.5 ${isMajor ? 'text-red-700 dark:text-red-400' : 'text-orange-700 dark:text-orange-400'}`}>
                           {interaction.effect}
                         </p>
-                        <p className={`text-xs mt-1 font-medium ${isMajor ? 'text-red-600' : 'text-orange-600'}`}>
+                        <p className={`text-xs mt-1.5 font-semibold ${isMajor ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>
                           Action: {interaction.action}
                         </p>
                       </div>
@@ -364,20 +331,22 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
             </div>
           )}
 
+          {/* Recent use warning */}
           {assessment.recentUseWarning && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-              <p className="text-sm font-semibold text-amber-800 mb-1">Recent Antibiotic Use</p>
-              <p className="text-sm text-amber-700">{assessment.recentUseWarning}</p>
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl p-4 mb-4">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">Recent Antibiotic Use</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400">{assessment.recentUseWarning}</p>
             </div>
           )}
 
+          {/* Considerations */}
           {assessment.concerns?.length > 0 && (
-            <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <p className="text-sm font-semibold text-gray-700 mb-1">Considerations</p>
-              <ul className="space-y-1">
+            <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-2">Considerations</p>
+              <ul className="space-y-1.5">
                 {assessment.concerns.map((concern, idx) => (
-                  <li key={idx} className="text-sm text-gray-600 flex items-start gap-2">
-                    <span className="text-amber-500">•</span>
+                  <li key={idx} className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
                     {concern}
                   </li>
                 ))}
@@ -387,45 +356,50 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
 
           {/* Clinical rationale */}
           {rationale && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-blue-800">{rationale}</p>
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Info className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Clinical Rationale</span>
+              </div>
+              <p className="text-sm text-blue-800 dark:text-blue-300 leading-relaxed">{rationale}</p>
             </div>
           )}
           {loadingRationale && (
-            <div className="flex items-center gap-2 text-gray-500 mb-4">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Generating rationale...</span>
+            <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 mb-4">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span className="text-sm">Generating rationale…</span>
             </div>
           )}
 
           {/* Alternatives */}
           {rec?.alternatives?.length > 0 && (
-            <div className="mb-4">
+            <div className="mb-5">
               <button
                 onClick={() => setShowAlternatives(!showAlternatives)}
-                className="flex items-center gap-2 text-sm font-medium text-clinical-teal hover:text-clinical-navy"
+                className="flex items-center gap-2 text-sm font-semibold text-clinical-teal hover:text-clinical-navy dark:hover:text-white transition-colors"
               >
                 {showAlternatives ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                {showAlternatives ? 'Hide' : 'Show'} alternative options ({rec.alternatives.length})
+                {showAlternatives ? 'Hide' : 'Show'} alternatives ({rec.alternatives.length})
               </button>
-
               {showAlternatives && (
-                <div className="mt-2 space-y-2">
+                <div className="mt-3 space-y-2">
                   {rec.alternatives.map((alt, idx) => (
-                    <div key={idx} className="bg-gray-50 rounded-lg p-3">
-                      <div className="flex justify-between items-start">
+                    <div key={idx} className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50 rounded-xl p-3.5">
+                      <div className="flex justify-between items-start gap-2">
                         <div>
-                          <p className="font-medium text-gray-900">{alt.name}</p>
-                          <p className="text-sm text-gray-600">{alt.dose}</p>
+                          <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{alt.name}</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{alt.dose}</p>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          alt.spectrum === 'narrow' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                        <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold flex-shrink-0 ${
+                          alt.spectrum === 'narrow'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
                         }`}>
                           {alt.spectrum}
                         </span>
                       </div>
                       {alt.resistanceData && (
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
                           {alt.resistanceData.pathogen} susceptibility: {alt.resistanceData.susceptibility}%
                         </p>
                       )}
@@ -437,28 +411,29 @@ const AntibioticRecommender = ({ patient, antibiogramData, onPrescribe, onOverri
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-3 pt-4 border-t border-gray-100">
+          <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
             <button
               onClick={handlePrescribe}
               disabled={!rec?.recommendation}
-              className="flex-1 bg-clinical-teal text-white py-2 px-4 rounded-lg font-medium hover:bg-clinical-navy disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              className="btn-primary flex-1 justify-center"
             >
+              <Check className="w-4 h-4" />
               Accept Recommendation
             </button>
             <button
               onClick={handleOverride}
               disabled={assessment?.safe === false || isRecommended()}
-              className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn-secondary flex-1 justify-center"
             >
-              Override &amp; Prescribe Selected
+              Override &amp; Prescribe
             </button>
           </div>
         </>
       )}
 
       {!selectedAntibiotic && rec?.notes && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <p className="text-sm text-blue-800">{rec.notes}</p>
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 rounded-xl p-4">
+          <p className="text-sm text-blue-800 dark:text-blue-300 leading-relaxed">{rec.notes}</p>
         </div>
       )}
     </div>

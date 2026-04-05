@@ -1,101 +1,63 @@
-import React from 'react';
+import { FlaskConical, AlertTriangle } from 'lucide-react';
 
 const PatientLabsCard = ({ labs }) => {
-  const getEGFRColor = (egfr) => {
-    if (egfr >= 90) return 'text-green-600';
-    if (egfr >= 60) return 'text-yellow-600';
-    if (egfr >= 30) return 'text-orange-600';
-    return 'text-red-600';
+  const getEGFRConfig = (egfr) => {
+    if (egfr >= 90) return { color: 'text-green-600 dark:text-green-400', label: 'Normal', warn: false };
+    if (egfr >= 60) return { color: 'text-yellow-600 dark:text-yellow-400', label: 'Mildly reduced', warn: false };
+    if (egfr >= 30) return { color: 'text-orange-600 dark:text-orange-400', label: 'Moderately reduced', warn: true };
+    return             { color: 'text-red-600 dark:text-red-400',    label: 'Severely reduced', warn: true };
   };
-  
-  const getPotassiumStatus = (k) => {
-    if (k < 3.5) return { color: 'text-yellow-600', label: 'Low' };
-    if (k > 5.0) return { color: 'text-red-600', label: 'High' };
-    return { color: 'text-green-600', label: 'Normal' };
+
+  const getPotassiumConfig = (k) => {
+    if (k < 3.5) return { color: 'text-yellow-600 dark:text-yellow-400', label: 'Low', warn: true };
+    if (k > 5.0) return { color: 'text-red-600 dark:text-red-400',    label: 'High', warn: true };
+    return             { color: 'text-green-600 dark:text-green-400',  label: 'Normal', warn: false };
   };
-  
-  const potassiumStatus = getPotassiumStatus(labs.potassium);
-  
+
+  const egfrCfg = getEGFRConfig(labs.egfr);
+  const kCfg    = getPotassiumConfig(labs.potassium);
+
+  const labCells = [
+    { label: 'eGFR',        value: labs.egfr,        unit: 'mL/min', color: egfrCfg.color, warn: egfrCfg.warn, warnText: egfrCfg.label },
+    { label: 'Creatinine',  value: labs.creatinine,  unit: 'mg/dL',  color: 'text-gray-900 dark:text-gray-100', warn: false },
+    { label: 'Potassium',   value: labs.potassium,   unit: 'mEq/L',  color: kCfg.color, warn: kCfg.warn, warnText: kCfg.label },
+    { label: 'WBC',         value: labs.wbc,         unit: '×10⁹/L', color: labs.wbc > 11 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-900 dark:text-gray-100', warn: labs.wbc > 11, warnText: 'Elevated' },
+    { label: 'Hemoglobin',  value: labs.hemoglobin,  unit: 'g/dL',   color: 'text-gray-900 dark:text-gray-100', warn: false },
+    ...(labs.inr ? [{ label: 'INR', value: labs.inr, unit: 'warfarin', color: 'text-gray-900 dark:text-gray-100', warn: false }] : []),
+  ];
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-      <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
-        <svg className="w-5 h-5 mr-2 text-clinical-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        Recent Labs
-      </h3>
-      
-      <div className="grid grid-cols-3 gap-3">
-        {/* eGFR */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-500 uppercase">eGFR</div>
-          <div className={`text-2xl font-bold ${getEGFRColor(labs.egfr)}`}>
-            {labs.egfr}
-          </div>
-          <div className="text-xs text-gray-500">mL/min</div>
-          {labs.egfr < 60 && (
-            <div className="mt-1 text-xs font-medium text-orange-600">
-              ⚠️ Reduced kidney function
+    <div className="card p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <FlaskConical className="w-4 h-4 text-clinical-teal" />
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Recent Labs</h3>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2.5">
+        {labCells.map((cell, idx) => (
+          <div
+            key={idx}
+            className={`rounded-xl px-3 py-3 ${
+              cell.warn
+                ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-800/40'
+                : 'bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50'
+            }`}
+          >
+            <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              {cell.label}
             </div>
-          )}
-        </div>
-        
-        {/* Creatinine */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-500 uppercase">Creatinine</div>
-          <div className="text-2xl font-bold text-gray-700">
-            {labs.creatinine}
-          </div>
-          <div className="text-xs text-gray-500">mg/dL</div>
-        </div>
-        
-        {/* Potassium */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-500 uppercase">Potassium</div>
-          <div className={`text-2xl font-bold ${potassiumStatus.color}`}>
-            {labs.potassium}
-          </div>
-          <div className="text-xs text-gray-500">mEq/L</div>
-          {potassiumStatus.label !== 'Normal' && (
-            <div className="mt-1 text-xs font-medium">
-              {potassiumStatus.label}
+            <div className={`text-xl font-bold mt-0.5 tabular-nums ${cell.color}`}>
+              {cell.value}
             </div>
-          )}
-        </div>
-        
-        {/* WBC */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-500 uppercase">WBC</div>
-          <div className="text-2xl font-bold text-gray-700">
-            {labs.wbc}
+            <div className="text-[10px] text-gray-400 dark:text-gray-500">{cell.unit}</div>
+            {cell.warn && cell.warnText && (
+              <div className="flex items-center gap-1 mt-1">
+                <AlertTriangle className="w-2.5 h-2.5 text-amber-500" />
+                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">{cell.warnText}</span>
+              </div>
+            )}
           </div>
-          <div className="text-xs text-gray-500">×10⁹/L</div>
-          {labs.wbc > 11 && (
-            <div className="mt-1 text-xs font-medium text-yellow-600">
-              Elevated
-            </div>
-          )}
-        </div>
-        
-        {/* Hemoglobin */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="text-xs text-gray-500 uppercase">Hemoglobin</div>
-          <div className="text-2xl font-bold text-gray-700">
-            {labs.hemoglobin}
-          </div>
-          <div className="text-xs text-gray-500">g/dL</div>
-        </div>
-        
-        {/* INR (if present) */}
-        {labs.inr && (
-          <div className="bg-gray-50 rounded-lg p-3">
-            <div className="text-xs text-gray-500 uppercase">INR</div>
-            <div className="text-2xl font-bold text-gray-700">
-              {labs.inr}
-            </div>
-            <div className="text-xs text-gray-500">(on warfarin)</div>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );

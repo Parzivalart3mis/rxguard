@@ -1,19 +1,17 @@
-import React from 'react';
+import { Phone, Info, AlertCircle } from 'lucide-react';
 
 /**
  * Renders watch-out symptom information for a single medication.
- *
  * Props:
  *   medication   — { drug, dose, reason }
  *   sideEffects  — { class, side_effects: [...] } | undefined
- *                  Passed from DischargeWorkflow after fetching /api/drugs/side-effects.
  */
 const WatchOutSymptomCard = ({ medication, sideEffects }) => {
   if (!sideEffects) {
     return (
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-        <div className="font-semibold text-gray-800">{medication.drug}</div>
-        <div className="text-sm text-gray-500 mt-1">No side effect data available</div>
+      <div className="card p-4">
+        <div className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{medication.drug}</div>
+        <div className="text-sm text-gray-400 dark:text-gray-500 mt-1">No side effect data available</div>
       </div>
     );
   }
@@ -30,59 +28,67 @@ const WatchOutSymptomCard = ({ medication, sideEffects }) => {
   );
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="bg-clinical-navy text-white p-3">
-        <div className="font-semibold">{medication.drug}</div>
-        <div className="text-sm opacity-90">{medication.dose} — {medication.reason}</div>
+    <div className="card overflow-hidden">
+      {/* Drug header */}
+      <div className="bg-clinical-navy dark:bg-gray-900 px-4 py-3 border-b border-white/5">
+        <div className="font-bold text-white text-sm">{medication.drug}</div>
+        <div className="text-xs text-white/50 mt-0.5">{medication.dose} — {medication.reason}</div>
       </div>
 
       <div className="p-4 space-y-4">
+        {/* Serious side effects */}
         <div>
-          <h4 className="text-sm font-bold text-red-700 mb-2 flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            CALL YOUR DOCTOR OR GO TO THE ER IF:
-          </h4>
+          <div className="flex items-center gap-1.5 mb-2">
+            <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+            <h4 className="text-xs font-bold text-red-700 dark:text-red-400 uppercase tracking-wide">
+              Call doctor or go to ER if:
+            </h4>
+          </div>
           <ul className="space-y-1">
             {seriousSideEffects.length > 0 ? (
               seriousSideEffects.slice(0, 3).map((se, idx) => (
-                <li key={idx} className="text-sm text-red-600 flex items-start">
-                  <span className="mr-2">•</span>
-                  {se.description} (rare but serious)
+                <li key={idx} className="text-xs text-red-700 dark:text-red-400 flex items-start gap-1.5">
+                  <span className="mt-0.5 flex-shrink-0">•</span>
+                  {se.description} <span className="text-red-400 dark:text-red-600">(rare but serious)</span>
                 </li>
               ))
             ) : (
-              <li className="text-sm text-gray-600 italic">No serious side effects typically expected</li>
+              <li className="text-xs text-gray-400 dark:text-gray-500 italic">No serious side effects typically expected</li>
             )}
           </ul>
         </div>
 
+        {/* Common side effects */}
         <div>
-          <h4 className="text-sm font-bold text-yellow-700 mb-2 flex items-center">
-            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-            THESE MAY HAPPEN AND USUALLY GO AWAY:
-          </h4>
+          <div className="flex items-center gap-1.5 mb-2">
+            <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <h4 className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+              May happen — usually resolves:
+            </h4>
+          </div>
           <ul className="space-y-1">
             {commonSideEffects.slice(0, 3).map((se, idx) => (
-              <li key={idx} className="text-sm text-gray-700 flex items-start">
-                <span className="mr-2">•</span>
-                {se.description} ({se.pct}% of people)
+              <li key={idx} className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1.5">
+                <span className="mt-0.5 flex-shrink-0">•</span>
+                {se.description}
+                <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">({se.pct}%)</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="bg-blue-50 rounded-lg p-3 text-sm">
-          <div className="font-semibold text-blue-800 mb-1">
-            📞 When to call your doctor:
+        {/* When to call */}
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-800/40 rounded-xl p-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Phone className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-bold text-blue-800 dark:text-blue-300">When to call your doctor</span>
           </div>
-          <ul className="text-blue-700 space-y-1">
-            <li>• Side effects are severe or don't improve</li>
-            <li>• You have questions about the medication</li>
-            <li>• You want to stop taking it</li>
+          <ul className="space-y-0.5">
+            {['Side effects are severe or don\'t improve', 'You have questions about the medication', 'You want to stop taking it'].map((item, i) => (
+              <li key={i} className="text-xs text-blue-700 dark:text-blue-400 flex items-start gap-1.5">
+                <span className="mt-0.5">•</span>{item}
+              </li>
+            ))}
           </ul>
         </div>
       </div>

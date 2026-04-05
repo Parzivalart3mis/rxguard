@@ -6,19 +6,41 @@ export default {
     "./src/components/**/*.{js,jsx}",
     "./src/App.jsx",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          '"Helvetica Neue"',
+          'Arial',
+          'sans-serif',
+        ],
+      },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        slideDown: {
+          '0%': { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out both',
+        'slide-down': 'slideDown 0.2s ease-out both',
       },
       boxShadow: {
         card: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',
+        'card-md': '0 2px 8px rgba(0,0,0,0.08), 0 8px 32px rgba(0,0,0,0.08)',
+        'card-dark': '0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.25)',
       },
       colors: {
         primary: {
@@ -35,20 +57,27 @@ export default {
         },
         clinical: {
           navy: '#1e3a5f',
+          'navy-light': '#2a5084',
           teal: '#0d7377',
+          'teal-light': '#14919b',
           amber: '#f59e0b',
           red: '#dc2626',
           green: '#16a34a',
           yellow: '#eab308',
           orange: '#f97316',
-        }
-      }
+        },
+        surface: {
+          DEFAULT: '#ffffff',
+          subtle: '#f8fafc',
+          muted: '#f1f5f9',
+        },
+      },
     },
   },
   plugins: [],
   safelist: [
     'bg-clinical-navy',
-    'bg-clinical-teal', 
+    'bg-clinical-teal',
     'bg-clinical-amber',
     'bg-clinical-red',
     'bg-clinical-green',
@@ -61,5 +90,9 @@ export default {
     'text-clinical-green',
     'text-clinical-yellow',
     'text-clinical-orange',
-  ]
+    'border-clinical-red',
+    'border-clinical-orange',
+    'border-clinical-yellow',
+    'border-clinical-green',
+  ],
 }

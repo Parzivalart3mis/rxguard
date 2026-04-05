@@ -1,138 +1,157 @@
-import { User, Calendar, Weight, AlertCircle, Pill, Beaker } from 'lucide-react';
+import { User, Calendar, Weight, AlertCircle, Pill, Beaker, Heart } from 'lucide-react';
 
 const PatientContextCard = ({ patient }) => {
   if (!patient) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full">
-        <div className="text-center text-gray-500 py-8">
-          <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p>Select a patient to view clinical context</p>
+      <div className="card p-6 h-full flex flex-col items-center justify-center text-center min-h-[200px]">
+        <div className="w-14 h-14 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-center mb-4">
+          <User className="w-7 h-7 text-gray-300 dark:text-gray-600" />
         </div>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No patient selected</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Select a patient to view clinical context</p>
       </div>
     );
   }
 
-  const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
+  const formatDate = (dateStr) =>
+    new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
-        <div className="w-12 h-12 bg-clinical-navy rounded-full flex items-center justify-center">
-          <User className="w-6 h-6 text-white" />
+    <div className="card p-0 h-full overflow-hidden">
+      {/* Patient header */}
+      <div className="bg-clinical-navy dark:bg-gray-900 p-5">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-clinical-teal rounded-xl flex items-center justify-center flex-shrink-0">
+            <User className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-white truncate">{patient.name}</h2>
+            <p className="text-xs text-white/50 mt-0.5">
+              {patient.age} yrs &middot; {patient.gender === 'male' ? 'Male' : 'Female'} &middot; {patient.weight} kg
+            </p>
+          </div>
         </div>
+      </div>
+
+      <div className="p-5 space-y-5">
+
+        {/* Active Diagnoses */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">{patient.name}</h2>
-          <p className="text-sm text-gray-500">
-            {patient.age} years • {patient.gender === 'male' ? 'Male' : 'Female'} • {patient.weight} kg
-          </p>
-        </div>
-      </div>
-
-      {/* Conditions */}
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4" />
-          Active Diagnoses
-        </h3>
-        <div className="space-y-2">
-          {patient.conditions.map((condition, idx) => (
-            <div key={idx} className="bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-              <p className="font-medium text-red-900 text-sm">{condition.display}</p>
-              <p className="text-xs text-red-600">ICD-10: {condition.code} • Onset: {formatDate(condition.onset)}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Allergies */}
-      {patient.allergies && patient.allergies.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            Allergies
-          </h3>
-          <div className="space-y-1">
-            {patient.allergies.map((allergy, idx) => (
-              <div key={idx} className="bg-red-100 border border-red-200 rounded-lg px-3 py-2">
-                <p className="font-medium text-red-900 text-sm">{allergy.substance}</p>
-                <p className="text-xs text-red-700">Severity: {allergy.criticality}</p>
+          <div className="section-title mb-2.5">
+            <AlertCircle className="w-3.5 h-3.5" />
+            Active Diagnoses
+          </div>
+          <div className="space-y-2">
+            {patient.conditions.map((condition, idx) => (
+              <div key={idx} className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 rounded-lg px-3 py-2.5">
+                <p className="font-semibold text-red-900 dark:text-red-300 text-sm leading-tight">{condition.display}</p>
+                <p className="text-xs text-red-500 dark:text-red-600 mt-0.5">
+                  {condition.code} · {formatDate(condition.onset)}
+                </p>
               </div>
             ))}
           </div>
         </div>
-      )}
 
-      {/* Current Medications */}
-      {patient.currentMedications && patient.currentMedications.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-            <Pill className="w-4 h-4" />
-            Current Medications
-          </h3>
-          <ul className="space-y-1">
-            {patient.currentMedications.map((med, idx) => (
-              <li key={idx} className="text-sm text-gray-600 pl-3 border-l-2 border-gray-200">
-                {med}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Recent Labs */}
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-          <Beaker className="w-4 h-4" />
-          Recent Labs
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          {patient.observations.filter(o => 
-            o.display.includes('WBC') || 
-            o.display.includes('temperature') ||
-            o.display.includes('C-reactive') ||
-            o.display.includes('Procalcitonin') ||
-            o.display.includes('nitrites') ||
-            o.display.includes('leukocyte')
-          ).map((obs, idx) => (
-            <div key={idx} className="bg-gray-50 rounded-lg px-3 py-2">
-              <p className="text-xs text-gray-500 truncate">{obs.display}</p>
-              <p className={`font-semibold text-sm ${
-                obs.display.includes('temperature') && obs.value > 38 ? 'text-red-600' :
-                obs.display.includes('WBC') && obs.value > 10 ? 'text-red-600' :
-                obs.display.includes('nitrites') && obs.value === 'positive' ? 'text-red-600' :
-                'text-gray-900'
-              }`}>
-                {obs.value}{obs.unit ? ` ${obs.unit}` : ''}
-              </p>
+        {/* Allergies */}
+        {patient.allergies?.length > 0 && (
+          <div>
+            <div className="section-title mb-2.5">
+              <Heart className="w-3.5 h-3.5 text-red-500" />
+              Allergies
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="space-y-1.5">
+              {patient.allergies.map((allergy, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-lg px-3 py-2">
+                  <span className="font-semibold text-red-900 dark:text-red-300 text-sm">{allergy.substance}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    allergy.criticality === 'high'
+                      ? 'bg-red-200 text-red-800 dark:bg-red-800/40 dark:text-red-300'
+                      : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+                  }`}>
+                    {allergy.criticality}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-      {/* Past Antibiotics */}
-      {patient.pastAntibiotics && patient.pastAntibiotics.length > 0 && (
+        {/* Current Medications */}
+        {patient.currentMedications?.length > 0 && (
+          <div>
+            <div className="section-title mb-2.5">
+              <Pill className="w-3.5 h-3.5" />
+              Current Medications
+            </div>
+            <ul className="space-y-1.5">
+              {patient.currentMedications.map((med, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="w-1 h-1 rounded-full bg-clinical-teal mt-2 flex-shrink-0" />
+                  {med}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Recent Labs */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            Past Antibiotics (12 months)
-          </h3>
-          <div className="space-y-1">
-            {patient.pastAntibiotics.map((abx, idx) => (
-              <div key={idx} className="flex justify-between text-sm bg-amber-50 px-3 py-2 rounded-lg">
-                <span className="text-gray-700">{abx.name}</span>
-                <span className="text-gray-500">{formatDate(abx.date)}</span>
-              </div>
-            ))}
+          <div className="section-title mb-2.5">
+            <Beaker className="w-3.5 h-3.5" />
+            Recent Labs
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {patient.observations
+              .filter(o =>
+                o.display.includes('WBC') ||
+                o.display.includes('temperature') ||
+                o.display.includes('C-reactive') ||
+                o.display.includes('Procalcitonin') ||
+                o.display.includes('nitrites') ||
+                o.display.includes('leukocyte')
+              )
+              .map((obs, idx) => {
+                const isAbnormal =
+                  (obs.display.includes('temperature') && obs.value > 38) ||
+                  (obs.display.includes('WBC') && obs.value > 10) ||
+                  (obs.display.includes('nitrites') && obs.value === 'positive');
+                return (
+                  <div key={idx} className={`rounded-lg px-3 py-2 ${
+                    isAbnormal
+                      ? 'bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/40'
+                      : 'bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700/50'
+                  }`}>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate leading-tight">{obs.display}</p>
+                    <p className={`font-bold text-sm mt-0.5 ${
+                      isAbnormal ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'
+                    }`}>
+                      {obs.value}{obs.unit ? ` ${obs.unit}` : ''}
+                    </p>
+                  </div>
+                );
+              })}
           </div>
         </div>
-      )}
+
+        {/* Past Antibiotics */}
+        {patient.pastAntibiotics?.length > 0 && (
+          <div>
+            <div className="section-title mb-2.5">
+              <Calendar className="w-3.5 h-3.5" />
+              Past Antibiotics (12 mo)
+            </div>
+            <div className="space-y-1.5">
+              {patient.pastAntibiotics.map((abx, idx) => (
+                <div key={idx} className="flex justify-between items-center bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-lg px-3 py-2">
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{abx.name}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(abx.date)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
